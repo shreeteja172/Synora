@@ -1,37 +1,94 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { MessageType, type WsMessage } from "@repo/types/ws";
+
+interface DisplayMessage {
+  id: number;
+  text: string;
+  type: MessageType;
+}
 
 export default function Home() {
-  const [messages, setMessages] = useState<string[]>([]);
+  const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:4000";
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const idRef = useRef(0);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const addMessage = useCallback((text: string, type: MessageType) => {
+    setMessages((prev) => [...prev, { id: idRef.current++, text, type }]);
+  }, []);
 
   const connect = useCallback(() => {
-    const ws = new WebSocket("ws://localhost:4000");
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
     ws.onerror = () => setConnected(false);
 
     ws.onmessage = (e) => {
-      setMessages((prev) => [...prev, e.data]);
+      try {
+        const msg: WsMessage = JSON.parse(e.data);
+        switch (msg.type) {
+          case MessageType.MESSAGE:
+            addMessage(msg.payload.content, MessageType.MESSAGE);
+            break;
+          case MessageType.TYPING:
+            setIsTyping(true);
+            if (typingTimeoutRef.current)
+              clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(
+              () => setIsTyping(false),
+              2000,
+            );
+            break;
+          case MessageType.SEEN:
+            addMessage("Seen", MessageType.SEEN);
+            break;
+        }
+      } catch {
+        addMessage(e.data, MessageType.MESSAGE);
+      }
     };
 
     wsRef.current = ws;
-  }, []);
+  }, [addMessage, wsUrl]);
 
   useEffect(() => {
     connect();
-    return () => wsRef.current?.close();
+    return () => {
+      wsRef.current?.close();
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
   }, [connect]);
 
   const sendMessage = () => {
     if (!input.trim() || !wsRef.current) return;
-    wsRef.current.send(input);
-    setMessages((prev) => [...prev, `You: ${input}`]);
+
+    const msg: WsMessage = {
+      type: MessageType.MESSAGE,
+      payload: { chatId: "1", content: input },
+    };
+
+    wsRef.current.send(JSON.stringify(msg));
+    addMessage(input, MessageType.MESSAGE);
     setInput("");
+  };
+
+  const handleTyping = () => {
+    if (!wsRef.current) return;
+    const msg: WsMessage = { type: MessageType.TYPING };
+    wsRef.current.send(JSON.stringify(msg));
+  };
+
+  const handleSeen = () => {
+    if (!wsRef.current) return;
+    const msg: WsMessage = { type: MessageType.SEEN };
+    wsRef.current.send(JSON.stringify(msg));
   };
 
   return (
@@ -52,12 +109,21 @@ export default function Home() {
             {messages.length === 0 && (
               <p className="text-zinc-400 text-sm">No messages yet.</p>
             )}
-            {messages.map((msg, i) => (
+            {isTyping && (
+              <p className="text-xs text-zinc-400 italic">
+                Someone is typing...
+              </p>
+            )}
+            {messages.map((msg) => (
               <div
-                key={i}
-                className="text-sm text-zinc-800 dark:text-zinc-200"
+                key={msg.id}
+                className={`text-sm rounded-lg px-3 py-2 max-w-[80%] ${
+                  msg.type === MessageType.SEEN
+                    ? "text-xs text-zinc-400 italic"
+                    : "text-zinc-800 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800"
+                }`}
               >
-                {msg}
+                {msg.text}
               </div>
             ))}
           </div>
@@ -66,8 +132,12 @@ export default function Home() {
             <input
               type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                handleTyping();
+              }}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+              onFocus={handleSeen}
               placeholder="Type a message..."
               className="flex-1 px-4 py-3 text-sm bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 outline-none"
             />
