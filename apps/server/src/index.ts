@@ -4,16 +4,34 @@ import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { google } from "googleapis";
 import { type WsMessage } from "@repo/types/ws";
-import {prisma} from "./db";
+import { prisma } from "./db";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./routes/auth";
+import dotenv from "dotenv";
+dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  }),
+);
+
+app.use(express.json());
+app.all("/api/auth/*splat", toNodeHandler(auth));
 const port = process.env.PORT || 4000;
 
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+});
+
+
+console.log({
+  BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
 });
 
 interface AuthenticatedWebSocket extends WebSocket {
@@ -21,56 +39,6 @@ interface AuthenticatedWebSocket extends WebSocket {
 }
 
 const wss = new WebSocketServer({ server });
-
-
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID!,
-  process.env.GOOGLE_CLIENT_SECRET!,
-  `${process.env.SERVER_URL}/auth/google/callback`
-);
-
-app.get("/auth/google", (req: Request, res: Response) => {
-  const authUrl = oauth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: ["profile", "email"],
-    prompt: "consent",
-  });
-  res.json({ authUrl });
-});
-
-app.get("/auth/google/callback", async (req: Request, res: Response) => {
-  try {
-    const { code } = req.query;
-    const { tokens } = await oauth2Client.getToken(code as string);
-    oauth2Client.setCredentials(tokens);
-
-    const userInfo = await google.oauth2("v2").userinfo.get({ auth: oauth2Client });
-    const { email, name, picture, id: googleId } = userInfo.data;
-
-    let user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      user = await prisma.user.create({
-        data: { email, name, image: picture, googleId },
-      });
-    } else if (!user.googleId) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { googleId },
-      });
-    }
-
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      process.env.JWT_SECRET!,
-      { expiresIn: "7d" }
-    );
-
-    res.redirect(`${process.env.CLIENT_URL}?token=${token}&userId=${user.id}`);
-  } catch (error) {
-    console.error("OAuth error:", error);
-    res.redirect(`${process.env.CLIENT_URL}?error=auth_failed`);
-  }
-});
 
 //websocket
 
@@ -117,6 +85,6 @@ wss.on("connection", (ws: AuthenticatedWebSocket) => {
 });
 
 app.get("/", (req, res) => {
-  // const 
+  // const
   res.send("Server running");
 });
