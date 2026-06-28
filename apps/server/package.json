@@ -27,12 +27,14 @@
     "express": "^5.2.1",
     "googleapis": "^173.0.0",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^9.0.1",
     "pg": "^8.21.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.3",
+    "@types/nodemailer": "^8.0.1",
     "@types/ws": "^8.18.1",
     "nodemon": "^3.1.14",
     "prisma": "^7.8.0",

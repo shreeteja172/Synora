@@ -1,0 +1,64 @@
+import { Router } from "express";
+import { PrismaClient } from "../generated/prisma/client";
+import { generateOTP } from "../utils/otp";
+import { sendOTPEmail } from "../services/email.service";
+import { PrismaPg } from "@prisma/adapter-pg";
+import "../config/env";
+
+const router = Router();
+
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL!,
+});
+
+export const prisma = new PrismaClient({
+  adapter,
+});
+
+router.post("/request", async (req, res) => {
+  const { email } = req.body;
+
+  const otp = generateOTP();
+
+  await prisma.oTP.create({
+    data: {
+      email,
+      code: otp,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    },
+  });
+
+  await sendOTPEmail(email, otp);
+
+  return res.json({ message: "OTP sent" });
+});
+
+router.post("/verify", async (req, res) => {
+  const { email, otp } = req.body;
+
+  const record = await prisma.oTP.findFirst({
+    where: {
+      email,
+      code: otp,
+      used: false,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!record) {
+    return res.status(400).json({ message: "Invalid OTP" });
+  }
+
+  if (record.expiresAt < new Date()) {
+    return res.status(400).json({ message: "OTP expired" });
+  }
+
+  await prisma.oTP.update({
+    where: { id: record.id },
+    data: { used: true },
+  });
+
+  return res.json({
+    message: "OTP verified, login success",
+  });
+});
