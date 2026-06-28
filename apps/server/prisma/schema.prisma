@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -13,19 +8,19 @@ datasource db {
 }
 
 model User {
-  id            String    @id @unique @default(uuid())
-  email         String    @unique
+  id            String       @id @unique @default(uuid())
+  email         String       @unique
   name          String?
   image         String?
-  emailVerified Boolean   @default(false)
+  emailVerified Boolean      @default(false)
   password      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  sessions      Session[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  isPro         Boolean?     @default(false)
   accounts      Account[]
   chatMembers   ChatMember[]
   messages      Message[]
+  sessions      Session[]
 
   @@map("user")
 }
@@ -37,36 +32,41 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    String
+  ipAddress String?
+  userAgent String?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("session")
 }
 
 model Account {
-  id                   String    @id @default(cuid())
-  accountId            String
-  providerId           String
-  userId               String
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken          String?
-  refreshToken         String?
-  accessTokenExpiresAt DateTime?
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
-  scope                String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  scope                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  idToken               String?
+  password              String?
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([accountId, providerId])
+  @@index([userId])
   @@map("account")
 }
 
 model Chat {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   name      String?
-  isGroup   Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  isGroup   Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
   members   ChatMember[]
   messages  Message[]
 
@@ -74,11 +74,11 @@ model Chat {
 }
 
 model ChatMember {
-  id      String  @id @default(cuid())
-  chatId  String
-  userId  String
-  chat    Chat    @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  chatId String
+  userId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([chatId, userId])
   @@map("chat_member")
@@ -90,9 +90,20 @@ model Message {
   chatId    String
   senderId  String
   createdAt DateTime @default(now())
-
   chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@map("message")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
 }

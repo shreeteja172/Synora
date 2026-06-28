@@ -7,8 +7,7 @@ import { type WsMessage } from "@repo/types/ws";
 import { prisma } from "./db";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./routes/auth";
-import dotenv from "dotenv";
-dotenv.config();
+import "./env";
 
 const app = express();
 
