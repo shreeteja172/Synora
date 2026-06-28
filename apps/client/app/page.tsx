@@ -460,8 +460,8 @@ export default function Home() {
             <a href="#pricing" className="text-[13px] text-dim hover:text-white transition-colors">Pricing</a>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/login" className="text-[13px] text-dim hover:text-white transition-colors">Sign in</Link>
-            <Link href="/signup" className="text-[13px] px-4 py-2 rounded-xl bg-white text-black font-medium hover:bg-zinc-200 transition-colors">
+            <Link href="/auth/signin" className="text-[13px] text-dim hover:text-white transition-colors">Sign in</Link>
+            <Link href="/auth/signup" className="text-[13px] px-4 py-2 rounded-xl bg-white text-black font-medium hover:bg-zinc-200 transition-colors">
               Get Started
             </Link>
           </div>
@@ -491,7 +491,7 @@ export default function Home() {
 
               <div className="flex items-center gap-4 animate-fade-up-d3">
                 <Link
-                  href="/login"
+                  href="/auth/signin"
                   className="px-5 py-2.5 rounded-2xl bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-all active:scale-[0.98]"
                 >
                   Start Chatting
@@ -762,7 +762,7 @@ export default function Home() {
           </p>
           <div className="flex items-center justify-center gap-4">
             <Link
-              href="/signup"
+              href="/auth/signup"
               className="px-6 py-3 rounded-2xl bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-all active:scale-[0.98]"
             >
               Start Free
