@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { google } from "googleapis";
 import { type WsMessage } from "@repo/types/ws";
-import prisma from "./db";
+import {prisma} from "./db";
 
 const app = express();
 app.use(cors());
@@ -20,7 +20,7 @@ interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
 }
 
-const wss = new WebSocketServer({ server, noServer: true });
+const wss = new WebSocketServer({ server });
 
 
 const oauth2Client = new google.auth.OAuth2(
