@@ -27,11 +27,11 @@ const server = app.listen(port, () => {
 });
 
 
-console.log({
-  BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
-  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
-});
+// console.log({
+//   BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+//   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+//   GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
+// });
 
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
