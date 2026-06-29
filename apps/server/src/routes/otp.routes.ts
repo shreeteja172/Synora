@@ -1,19 +1,10 @@
 import { Router } from "express";
-import { PrismaClient } from "../generated/prisma/client";
 import { generateOTP } from "../utils/otp";
 import { sendOTPEmail } from "../services/email.service";
-import { PrismaPg } from "@prisma/adapter-pg";
 import "../config/env";
+import { prisma } from "../db";
 
 const router = Router();
-
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL!,
-});
-
-export const prisma = new PrismaClient({
-  adapter,
-});
 
 router.post("/request", async (req, res) => {
   const { email } = req.body;
@@ -62,3 +53,5 @@ router.post("/verify", async (req, res) => {
     message: "OTP verified, login success",
   });
 });
+
+export { router as otpRoutes };

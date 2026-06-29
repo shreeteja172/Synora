@@ -8,6 +8,7 @@ import { prisma } from "./db";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./routes/auth";
 import "./config/env";
+import { otpRoutes } from "./routes/otp.routes";
 
 const app = express();
 
@@ -18,8 +19,11 @@ app.use(
   }),
 );
 
-app.use(express.json());
 app.all("/api/auth/*splat", toNodeHandler(auth));
+
+app.use(express.json());
+app.use("/api/otp", otpRoutes);
+
 const port = process.env.PORT || 4000;
 
 const server = app.listen(port, () => {
