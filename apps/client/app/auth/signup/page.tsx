@@ -1,3 +1,5 @@
+"use client";
+
 import { signIn } from "@/lib/auth-client";
 
 const page = () => {
