@@ -1,10 +1,14 @@
 import dotenv from "dotenv";
 import path from "path";
 
+const envFile =
+  process.env.NODE_ENV === "production"
+    ? ".env.prod"
+    : ".env.local";
+
 dotenv.config({
-  path: path.join(process.cwd(), ".env"),
-  override: true,
+  path: path.join(process.cwd(), envFile),
+  override: false,
 });
 
-// console.log(process.cwd());
-// console.log(process.env.DATABASE_URL);
+console.log(`Loaded env file: ${envFile}`);
