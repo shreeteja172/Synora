@@ -50,7 +50,8 @@ router.post("/verify", async (req, res) => {
   });
 
   return res.json({
-    message: "OTP verified, login success",
+    verified: true,
+    message: "OTP verified successfully",
   });
 });
 

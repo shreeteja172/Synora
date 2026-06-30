@@ -1,10 +1,7 @@
-import express, { Request, Response } from "express";
+import express from "express";
 import cors from "cors";
 import { WebSocketServer, WebSocket } from "ws";
-import jwt from "jsonwebtoken";
-import { google } from "googleapis";
 import { type WsMessage } from "@repo/types/ws";
-import { prisma } from "./db";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./routes/auth";
 import "./config/env";
@@ -19,9 +16,8 @@ app.use(
   }),
 );
 
-app.all("/api/auth/*splat", toNodeHandler(auth));
-
 app.use(express.json());
+app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use("/api/otp", otpRoutes);
 
 const port = process.env.PORT || 4000;
