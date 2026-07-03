@@ -1,7 +1,7 @@
 import { Server } from "http";
 import { WebSocketServer } from "ws";
 import { type WsMessage } from "@repo/types/ws";
-
+import { handleMessage } from "./handlers/message";
 import { authenticate } from "./auth";
 import { manager, type AuthenticatedWebSocket } from "./manager";
 
@@ -28,11 +28,11 @@ export const initWebSocket = (server: Server) => {
 
           switch (message.type) {
             case "MESSAGE":
-              console.log(
-                `[MESSAGE] userId: ${ws.userId}, chatId: ${message.payload.chatId}, content: ${message.payload.content}`,
-              );
-
-              // We'll replace this with manager.send(...)
+              await handleMessage({
+                senderId: ws.userId!,
+                chatId: message.payload.chatId,
+                content: message.payload.content,
+              });
               break;
 
             case "TYPING":

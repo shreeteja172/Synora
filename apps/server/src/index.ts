@@ -5,6 +5,7 @@ import { auth } from "./routes/auth";
 import "./config/env";
 import { otpRoutes } from "./routes/otp.routes";
 import { initWebSocket } from "./websocket/index";
+import { chatRoutes } from "./routes/chat.routes";
 
 const app = express();
 
@@ -18,7 +19,7 @@ app.use(
 app.use(express.json());
 app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use("/api/otp", otpRoutes);
-
+app.use("/api/chats", chatRoutes);
 const port = process.env.PORT || 4000;
 
 const server = app.listen(port, () => {
