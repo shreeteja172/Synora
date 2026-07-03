@@ -1,14 +1,11 @@
 import { Router } from "express";
-import { fromNodeHeaders } from "better-auth/node";
-import { auth } from "./auth";
 import { prisma } from "../db";
+import { getSessionFromHeaders } from "../lib/session";
 const chatRoutes = Router();
 
 chatRoutes.post("/", async (req, res) => {
   try {
-    const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers),
-    });
+    const session = await getSessionFromHeaders(req.headers);
 
     if (!session) {
       return res.status(401).json({
@@ -26,6 +23,12 @@ chatRoutes.post("/", async (req, res) => {
     if (!receiver) {
       return res.status(404).json({
         message: "Receiver not found",
+      });
+    }
+
+    if (receiverId === session.user.id) {
+      return res.status(400).json({
+        message: "You cannot create a chat with yourself.",
       });
     }
     const existingChat = await prisma.chat.findFirst({
@@ -49,6 +52,7 @@ chatRoutes.post("/", async (req, res) => {
         ],
       },
     });
+
     if (existingChat) {
       return res.json(existingChat);
     }
@@ -73,6 +77,74 @@ chatRoutes.post("/", async (req, res) => {
     });
 
     return res.status(201).json(chat);
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+});
+
+chatRoutes.get("/", async (req, res) => {
+  try {
+    const session = await getSessionFromHeaders(req.headers);
+
+    if (!session) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
+
+    const chats = await prisma.chat.findMany({
+      where: {
+        members: {
+          some: {
+            userId: session.user.id,
+          },
+        },
+      },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                image: true,
+              },
+            },
+          },
+        },
+        messages: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 1,
+          select: {
+            id: true,
+            content: true,
+            senderId: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+
+    const formattedChats = chats.map((chat) => ({
+      id: chat.id,
+      isGroup: chat.isGroup,
+      name: chat.name,
+      members: chat.members,
+      lastMessage: chat.messages[0] ?? null,
+      updatedAt: chat.updatedAt,
+    }));
+
+    return res.json(formattedChats);
   } catch (error) {
     console.error(error);
 

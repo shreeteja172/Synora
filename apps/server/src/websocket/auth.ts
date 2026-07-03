@@ -1,11 +1,8 @@
 import { IncomingMessage } from "http";
-import { fromNodeHeaders } from "better-auth/node";
-import { auth } from "../routes/auth";
+import { getSessionFromHeaders } from "../lib/session";
 
 export async function authenticate(request: IncomingMessage) {
-  const session = await auth.api.getSession({
-    headers: fromNodeHeaders(request.headers),
-  });
+  const session = await getSessionFromHeaders(request.headers);
 
   if (!session) {
     return null;
