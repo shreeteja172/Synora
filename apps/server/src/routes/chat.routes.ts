@@ -154,4 +154,54 @@ chatRoutes.get("/", async (req, res) => {
   }
 });
 
+chatRoutes.get("/:chatId/messages", async (req, res) => {
+  try {
+    const session = await getSessionFromHeaders(req.headers);
+
+    if (!session) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
+
+    const { chatId } = req.params;
+
+    const chat = await prisma.chat.findFirst({
+      where: {
+        id: chatId,
+        members: {
+          some: {
+            userId: session.user.id,
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!chat) {
+      return res.status(404).json({
+        message: "Chat not found",
+      });
+    }
+    const messages = await prisma.message.findMany({
+      where: {
+        chatId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 30,
+    });
+    return res.json(messages);
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+});
+
 export { chatRoutes };
