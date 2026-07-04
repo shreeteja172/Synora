@@ -56,7 +56,7 @@ chatRoutes.post("/", async (req, res) => {
     if (existingChat) {
       return res.json(existingChat);
     }
-
+    
     const chat = await prisma.chat.create({
       data: {
         isGroup: false,
@@ -75,7 +75,7 @@ chatRoutes.post("/", async (req, res) => {
         members: true,
       },
     });
-
+    
     return res.status(201).json(chat);
   } catch (error) {
     console.error(error);
@@ -86,6 +86,7 @@ chatRoutes.post("/", async (req, res) => {
   }
 });
 
+//yeh wala route user ke chats ko fetch karega, aur har chat ke last message ko bhi fetch karega.
 chatRoutes.get("/", async (req, res) => {
   try {
     const session = await getSessionFromHeaders(req.headers);
@@ -154,6 +155,7 @@ chatRoutes.get("/", async (req, res) => {
   }
 });
 
+//yeh wala route seperate chat ke messages ko fetch karega, aur sirf wo user ke liye accessible hoga jo us chat ka member hai.
 chatRoutes.get("/:chatId/messages", async (req, res) => {
   try {
     const session = await getSessionFromHeaders(req.headers);

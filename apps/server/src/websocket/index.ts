@@ -27,14 +27,22 @@ export const initWebSocket = (server: Server) => {
           const message: WsMessage = JSON.parse(data.toString());
 
           switch (message.type) {
-            case "MESSAGE":
-              await handleMessage({
+            case "MESSAGE": {
+              const result = await handleMessage({
                 senderId: ws.userId!,
                 chatId: message.payload.chatId,
                 content: message.payload.content,
               });
-              break;
 
+              for (const userId of result.memberIds) {
+                manager.send(userId, {
+                  type: "NEW_MESSAGE",
+                  payload: result.message,
+                });
+              }
+
+              break;
+            }
             case "TYPING":
               console.log(`[TYPING] userId: ${ws.userId}`);
               break;
