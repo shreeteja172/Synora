@@ -22,7 +22,7 @@ export default function SignInPage() {
     try {
       await signIn.social({
         provider: "google",
-        callbackURL: "/chats",
+        callbackURL: `${APP_URL}/chats`,
       });
     } catch {
       setError("Failed to sign in with Google.");

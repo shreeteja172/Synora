@@ -24,7 +24,7 @@ export default function SignUpPage() {
     try {
       await signIn.social({
         provider: "google",
-        callbackURL: "/chats",
+        callbackURL: `${APP_URL}/chats`,
       });
     } catch {
       setError("Failed to sign up with Google.");
