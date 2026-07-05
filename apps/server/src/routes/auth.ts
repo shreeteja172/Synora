@@ -19,15 +19,23 @@ export const auth = betterAuth({
   },
 
   advanced: {
-    cookiePrefix: "better-auth",
+    crossSubDomainCookies: {
+      enabled: true,
+    },
+    defaultCookieAttributes: {
+      secure: true,
+      httpOnly: true,
+      sameSite: "none", 
+      partitioned: true,
+    },
   },
 
   emailAndPassword: {
     enabled: true,
   },
   account: {
-		skipStateCookieCheck: true,
-	},
+    skipStateCookieCheck: true,
+  },
 
   socialProviders: {
     google: {
