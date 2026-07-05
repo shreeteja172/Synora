@@ -30,4 +30,12 @@ interface Message {
   createdAt: string;
 }
 
-export type { Chat, Message, ChatMember };
+interface UserSearchResult {
+  id: string;
+  name: string | null;
+  username: string | null;
+  email: string;
+  image: string | null;
+}
+
+export type { Chat, Message, ChatMember, UserSearchResult };

@@ -12,6 +12,16 @@ export const auth = betterAuth({
 
   trustedOrigins: ["http://localhost:3000"],
 
+  session: {
+    cookieCache: {
+      enabled: false,
+    },
+  },
+
+  advanced: {
+    cookiePrefix: "better-auth",
+  },
+
   emailAndPassword: {
     enabled: true,
   },

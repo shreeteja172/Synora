@@ -17,6 +17,26 @@ app.use(
 );
 
 app.use(express.json());
+
+app.use((req, _res, next) => {
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    const decoded = cookieHeader
+      .split(";")
+      .map((c) => {
+        const [name, ...rest] = c.split("=");
+        const value = rest.join("=");
+        if (name.trim() === "better-auth.session_token") {
+          return `${name}=${decodeURIComponent(value)}`;
+        }
+        return c;
+      })
+      .join(";");
+    req.headers.cookie = decoded;
+  }
+  next();
+});
+
 app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use("/api/otp", otpRoutes);
 app.use("/api/chats", chatRoutes);

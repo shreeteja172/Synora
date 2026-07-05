@@ -1,76 +1,148 @@
 import { Server } from "http";
-import { WebSocketServer } from "ws";
-import { type WsMessage } from "@repo/types/ws";
+import { WebSocketServer, WebSocket } from "ws";
+import { type WsMessage, MessageType } from "@repo/types/ws";
 import { handleMessage } from "./handlers/message";
-import { authenticate } from "./auth";
+import { auth } from "../routes/auth";
+import { prisma } from "../db";
 import { manager, type AuthenticatedWebSocket } from "./manager";
 
 export const initWebSocket = (server: Server) => {
-  const wss = new WebSocketServer({ server });
+  const wss = new WebSocketServer({ noServer: true });
 
-  wss.on("connection", async (ws: AuthenticatedWebSocket, request) => {
-    try {
-      const user = await authenticate(request);
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(
+      request.url || "",
+      `http://${request.headers.host || "localhost"}`,
+    );
+    const token = url.searchParams.get("token");
+    const cookieHeader = request.headers.cookie;
 
-      if (!user) {
-        console.log("Unauthenticated websocket connection");
-        ws.close();
-        return;
-      }
+    const headers = cookieHeader
+      ? { cookie: cookieHeader }
+      : token
+        ? { cookie: `better-auth.session_token=${decodeURIComponent(token)}` }
+        : null;
 
-      manager.connect(user.id, ws);
+    if (!headers) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+      return;
+    }
 
-      console.log(`User ${user.id} connected`);
+    auth.api
+      .getSession({
+        headers,
+      })
+      .then((session) => {
+        if (!session) {
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+          socket.destroy();
+          return;
+        }
 
-      ws.on("message", async (data) => {
-        try {
-          const message: WsMessage = JSON.parse(data.toString());
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          const client = ws as AuthenticatedWebSocket;
+          client.userId = session.user.id;
+          wss.emit("connection", client, request);
+        });
+      })
+      .catch(() => {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+      });
+  });
 
-          switch (message.type) {
-            case "MESSAGE": {
-              const result = await handleMessage({
-                senderId: ws.userId!,
-                chatId: message.payload.chatId,
-                content: message.payload.content,
+  wss.on("connection", (ws: AuthenticatedWebSocket) => {
+    if (!ws.userId) return;
+
+    manager.connect(ws.userId, ws);
+
+    ws.on("message", async (data) => {
+      try {
+        const message: WsMessage = JSON.parse(data.toString());
+
+        switch (message.type) {
+          case MessageType.MESSAGE: {
+            const result = await handleMessage({
+              senderId: ws.userId!,
+              chatId: message.payload.chatId,
+              content: message.payload.content,
+            });
+
+            for (const userId of result.memberIds) {
+              manager.send(userId, {
+                type: MessageType.NEW_MESSAGE,
+                payload: result.message,
               });
+            }
 
-              for (const userId of result.memberIds) {
-                manager.send(userId, {
-                  type: "NEW_MESSAGE",
-                  payload: result.message,
+            break;
+          }
+
+          case MessageType.TYPING: {
+            if (!message.payload?.chatId) break;
+            const typingMembers = await prisma.chatMember.findMany({
+              where: { chatId: message.payload.chatId },
+              select: { userId: true },
+            });
+            const typingSender = message.payload.sender || {
+              id: ws.userId,
+              name: "",
+            };
+            for (const member of typingMembers) {
+              if (member.userId !== ws.userId) {
+                manager.send(member.userId, {
+                  type: MessageType.TYPING,
+                  payload: {
+                    chatId: message.payload.chatId,
+                    sender: typingSender,
+                  },
                 });
               }
-
-              break;
             }
-            case "TYPING":
-              console.log(`[TYPING] userId: ${ws.userId}`);
-              break;
-
-            case "SEEN":
-              console.log(`[SEEN] userId: ${ws.userId}`);
-              break;
-
-            default:
-              console.log("[UNKNOWN]", message);
+            break;
           }
-        } catch (err) {
-          console.error("Invalid websocket message", err);
-        }
-      });
 
-      ws.on("close", () => {
-        if (ws.userId) {
-          manager.disconnect(ws.userId);
-        }
-      });
+          case MessageType.SEEN: {
+            if (!message.payload?.chatId) break;
+            const seenSender = message.payload.sender || {
+              id: ws.userId,
+              name: "",
+            };
+            const seenMembers = await prisma.chatMember.findMany({
+              where: { chatId: message.payload.chatId },
+              select: { userId: true },
+            });
+            for (const member of seenMembers) {
+              if (member.userId !== ws.userId) {
+                manager.send(member.userId, {
+                  type: MessageType.SEEN,
+                  payload: {
+                    chatId: message.payload.chatId,
+                    sender: seenSender,
+                  },
+                });
+              }
+            }
+            break;
+          }
 
-      ws.on("error", (err) => {
-        console.error(err);
-      });
-    } catch (err) {
-      console.error(err);
-      ws.close();
-    }
+          default:
+            console.log("[WS] Unknown message type:", message.type);
+        }
+      } catch (err) {
+        console.error("[WS] Invalid message:", err);
+      }
+    });
+
+    ws.on("close", () => {
+      if (ws.userId) {
+        manager.disconnect(ws.userId);
+      }
+    });
+
+    ws.on("error", (err) => {
+      console.error(`[WS] Error for ${ws.userId}:`, err);
+    });
   });
 };

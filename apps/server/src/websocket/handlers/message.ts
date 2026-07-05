@@ -5,6 +5,7 @@ type HandleMessageParams = {
   chatId: string;
   content: string;
 };
+
 export async function handleMessage({
   senderId,
   chatId,
@@ -13,11 +14,7 @@ export async function handleMessage({
   const chat = await prisma.chat.findFirst({
     where: {
       id: chatId,
-      members: {
-        some: {
-          userId: senderId,
-        },
-      },
+      members: { some: { userId: senderId } },
     },
   });
 
@@ -26,33 +23,35 @@ export async function handleMessage({
   }
 
   const savedMessage = await prisma.message.create({
-    data: {
-      senderId,
-      chatId,
-      content,
-    },
+    data: { senderId, chatId, content },
   });
 
   await prisma.chat.update({
-    where: {
-      id: chatId,
-    },
+    where: { id: chatId },
     data: {},
   });
 
   const chatMembers = await prisma.chatMember.findMany({
-    where: {
-      chatId,
-    },
-    select: {
-      userId: true,
-    },
+    where: { chatId },
+    select: { userId: true },
   });
 
-  const memberIds = chatMembers.map((m) => m.userId);
+  const sender = await prisma.user.findUnique({
+    where: { id: senderId },
+    select: { id: true, name: true, image: true },
+  });
 
   return {
-    message: savedMessage,
-    memberIds,
+    message: {
+      id: savedMessage.id,
+      chatId: savedMessage.chatId,
+      content: savedMessage.content,
+      senderId: savedMessage.senderId,
+      createdAt: savedMessage.createdAt.toISOString(),
+      sender: sender
+        ? { id: sender.id, name: sender.name || "User", image: sender.image }
+        : { id: senderId, name: "User" },
+    },
+    memberIds: chatMembers.map((m) => m.userId),
   };
 }

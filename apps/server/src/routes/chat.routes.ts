@@ -3,6 +3,40 @@ import { prisma } from "../db";
 import { getSessionFromHeaders } from "../lib/session";
 const chatRoutes = Router();
 
+chatRoutes.get("/users/search", async (req, res) => {
+  try {
+    const session = await getSessionFromHeaders(req.headers);
+    if (!session) return res.status(401).json({ message: "Unauthorized" });
+
+    const q = (req.query.q as string) || "";
+    if (!q || q.length < 1) return res.json([]);
+
+    const users = await prisma.user.findMany({
+      where: {
+        id: { not: session.user.id },
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+          { username: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        email: true,
+        image: true,
+      },
+      take: 10,
+    });
+
+    return res.json(users);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 chatRoutes.post("/", async (req, res) => {
   try {
     const session = await getSessionFromHeaders(req.headers);
