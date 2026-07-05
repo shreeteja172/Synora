@@ -1,30 +1,89 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
 import { MessageType, type WsMessage } from "@repo/types/ws";
+import { useSession, signOut } from "@/lib/auth-client";
+import type { Chat, Message } from "./types";
 
-interface DisplayMessage {
-  id: number;
-  text: string;
-  type: MessageType;
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  withCredentials: true,
+});
+
+async function fetchChats(): Promise<Chat[]> {
+  const { data } = await api.get<Chat[]>("/api/chats");
+  return data;
 }
 
-export default function Home() {
-  const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:4000";
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+async function fetchMessages(chatId: string): Promise<Message[]> {
+  const { data } = await api.get<Message[]>(`/api/chats/${chatId}/messages`);
+  return data.reverse();
+}
+
+export default function ChatPage() {
+  const router = useRouter();
+  const qc = useQueryClient();
+  const { data: session, isPending: sessionLoading } = useSession();
+  const wsUrl = process.env.NEXT_PUBLIC_WS_URL
+
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const idRef = useRef(0);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [typingSenders, setTypingSenders] = useState<Map<string, { name: string; timeout: ReturnType<typeof setTimeout> }>>(new Map());
+  const [mobileShowChat, setMobileShowChat] = useState(false);
 
-  const addMessage = useCallback((text: string, type: MessageType) => {
-    setMessages((prev) => [...prev, { id: idRef.current++, text, type }]);
+  const wsRef = useRef<WebSocket | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  const connect = useCallback(() => {
-    const ws = new WebSocket(wsUrl);
+  const chatsQuery = useQuery({
+    queryKey: ["chats"],
+    queryFn: fetchChats,
+    enabled: !!session,
+  });
+
+  const messagesQuery = useQuery({
+    queryKey: ["messages", activeChatId],
+    queryFn: () => fetchMessages(activeChatId!),
+    enabled: !!activeChatId,
+  });
+
+  const activeChat = chatsQuery.data?.find((c) => c.id === activeChatId);
+  const otherMember = activeChat?.members.find(
+    (m) => m.user.id !== session?.user?.id,
+  );
+  const messages = messagesQuery.data ?? [];
+
+  useEffect(() => {
+    if (messages.length > 0) setTimeout(scrollToBottom, 50);
+  }, [messages.length, scrollToBottom]);
+
+  useEffect(() => {
+    if (!sessionLoading && !session) {
+      router.push("/auth/signin");
+    }
+  }, [session, sessionLoading, router]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const getCookie = (name: string) => {
+      const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
+      return match ? match[1] : null;
+    };
+
+    const rawCookie = getCookie("better-auth.session_token");
+    if (!rawCookie) return;
+
+    const url = `${wsUrl}?token=${encodeURIComponent(rawCookie)}`;
+    const ws = new WebSocket(url);
 
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
@@ -33,124 +92,313 @@ export default function Home() {
     ws.onmessage = (e) => {
       try {
         const msg: WsMessage = JSON.parse(e.data);
+
         switch (msg.type) {
-          case MessageType.MESSAGE:
-            addMessage(msg.payload.content, MessageType.MESSAGE);
+          case MessageType.NEW_MESSAGE: {
+            const p = msg.payload;
+            if (p.chatId === activeChatId) {
+              qc.setQueryData<Message[]>(["messages", activeChatId], (old) => {
+                if (!old) return old;
+                if (old.some((m) => m.id === p.id)) return old;
+                return [...old, { id: p.id, content: p.content, chatId: p.chatId, senderId: p.senderId, createdAt: p.createdAt }];
+              });
+            }
+            qc.invalidateQueries({ queryKey: ["chats"] });
             break;
-          case MessageType.TYPING:
-            setIsTyping(true);
-            if (typingTimeoutRef.current)
-              clearTimeout(typingTimeoutRef.current);
-            typingTimeoutRef.current = setTimeout(
-              () => setIsTyping(false),
-              2000,
-            );
+          }
+
+          case MessageType.MESSAGE: {
+            qc.invalidateQueries({ queryKey: ["messages", msg.payload.chatId] });
+            qc.invalidateQueries({ queryKey: ["chats"] });
             break;
-          case MessageType.SEEN:
-            addMessage("Seen", MessageType.SEEN);
+          }
+
+          case MessageType.TYPING: {
+            if (msg.payload.sender.id === session?.user?.id) break;
+            if (msg.payload.chatId !== activeChatId) break;
+            const senderId = msg.payload.sender.id;
+            setTypingSenders((prev) => {
+              const next = new Map(prev);
+              const existing = next.get(senderId);
+              if (existing) clearTimeout(existing.timeout);
+              const timeout = setTimeout(() => {
+                setTypingSenders((p) => {
+                  const n = new Map(p);
+                  n.delete(senderId);
+                  return n;
+                });
+              }, 2000);
+              next.set(senderId, { name: msg.payload.sender.name, timeout });
+              return next;
+            });
             break;
+          }
         }
-      } catch {
-        addMessage(e.data, MessageType.MESSAGE);
-      }
+      } catch {}
     };
 
     wsRef.current = ws;
-  }, [addMessage, wsUrl]);
-
-  useEffect(() => {
-    connect();
     return () => {
-      wsRef.current?.close();
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      ws.close();
+      if (typingThrottleRef.current) clearTimeout(typingThrottleRef.current);
     };
-  }, [connect]);
+  }, [session, activeChatId, wsUrl, qc]);
 
   const sendMessage = () => {
-    if (!input.trim() || !wsRef.current) return;
+    if (!input.trim() || !wsRef.current || !activeChatId) return;
 
     const msg: WsMessage = {
       type: MessageType.MESSAGE,
-      payload: { chatId: "1", content: input },
+      payload: { chatId: activeChatId, content: input },
     };
 
     wsRef.current.send(JSON.stringify(msg));
-    addMessage(input, MessageType.MESSAGE);
     setInput("");
   };
 
   const handleTyping = () => {
-    if (!wsRef.current) return;
-    const msg: WsMessage = { type: MessageType.TYPING };
+    if (!wsRef.current || !activeChatId) return;
+    if (typingThrottleRef.current) return;
+    const msg: WsMessage = {
+      type: MessageType.TYPING,
+      payload: { chatId: activeChatId, sender: { id: session?.user?.id || "", name: session?.user?.name || "" } },
+    };
     wsRef.current.send(JSON.stringify(msg));
+    typingThrottleRef.current = setTimeout(() => {
+      typingThrottleRef.current = null;
+    }, 1000);
   };
 
-  const handleSeen = () => {
-    if (!wsRef.current) return;
-    const msg: WsMessage = { type: MessageType.SEEN };
-    wsRef.current.send(JSON.stringify(msg));
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/auth/signin");
   };
+
+  const formatTime = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  };
+
+  const getInitials = (name: string) =>
+    name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+
+  if (sessionLoading || !session) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-3 text-dim text-sm">
+          <div className="w-4 h-4 border-2 border-emerald border-t-transparent rounded-full animate-spin" />
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
+  const typingNames = Array.from(typingSenders.values()).map((s) => s.name);
+  const typingText =
+    typingNames.length === 1
+      ? `${typingNames[0]} is typing`
+      : typingNames.length === 2
+        ? `${typingNames[0]} and ${typingNames[1]} are typing`
+        : typingNames.length > 2
+          ? "Several people are typing"
+          : "";
 
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-2xl flex-col py-16 px-6">
-        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50 mb-2">
-          Synora
-        </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
-          {connected ? "Connected" : "Disconnected"}
-          <span
-            className={`inline-block w-2 h-2 rounded-full ml-2 ${connected ? "bg-green-500" : "bg-red-500"}`}
-          />
-        </p>
-
-        <div className="flex flex-col flex-1 min-h-100 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-white dark:bg-zinc-950">
-            {messages.length === 0 && (
-              <p className="text-zinc-400 text-sm">No messages yet.</p>
-            )}
-            {isTyping && (
-              <p className="text-xs text-zinc-400 italic">
-                Someone is typing...
-              </p>
-            )}
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`text-sm rounded-lg px-3 py-2 max-w-[80%] ${
-                  msg.type === MessageType.SEEN
-                    ? "text-xs text-zinc-400 italic"
-                    : "text-zinc-800 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800"
-                }`}
-              >
-                {msg.text}
-              </div>
-            ))}
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="border-b border-border bg-surface/80 backdrop-blur-sm sticky top-0 z-20">
+        <div className="flex items-center justify-between px-4 py-2.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-emerald/10 border border-emerald/20 flex items-center justify-center">
+              <svg className="w-3.5 h-3.5 text-emerald" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+              </svg>
+            </div>
+            <span className="text-sm font-semibold text-white tracking-tight">Synora</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald" : "bg-rose-400"}`} />
           </div>
-
-          <div className="flex border-t border-zinc-200 dark:border-zinc-800">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                handleTyping();
-              }}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              onFocus={handleSeen}
-              placeholder="Type a message..."
-              className="flex-1 px-4 py-3 text-sm bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 outline-none"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!connected}
-              className="px-6 text-sm font-medium bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-40 transition-colors"
-            >
-              Send
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/3 border border-border">
+              {session.user.image ? (
+                <img src={session.user.image} alt="" className="w-4 h-4 rounded-full" />
+              ) : (
+                <div className="w-4 h-4 rounded-full bg-emerald/10 text-emerald text-[8px] font-semibold flex items-center justify-center">
+                  {getInitials(session.user.name || session.user.email)}
+                </div>
+              )}
+              <span className="text-[11px] text-white font-medium">{session.user.name || session.user.email}</span>
+            </div>
+            <button onClick={handleSignOut} className="text-[10px] text-dim hover:text-white transition-colors px-1.5 py-1 rounded hover:bg-white/[0.03]">
+              Sign out
             </button>
           </div>
         </div>
-      </main>
+      </header>
+
+      <div className="flex-1 flex overflow-hidden">
+        <aside className={`${mobileShowChat ? "hidden md:flex" : "flex"} w-full md:w-80 flex-col border-r border-border bg-surface`}>
+          <div className="px-4 py-3 border-b border-border">
+            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider">Chats</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {chatsQuery.isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-4 h-4 border-2 border-emerald border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : !chatsQuery.data?.length ? (
+              <div className="px-4 py-12 text-center">
+                <p className="text-xs text-dim">No conversations yet</p>
+              </div>
+            ) : (
+              chatsQuery.data.map((chat) => {
+                const other = chat.members.find((m) => m.user.id !== session?.user?.id);
+                const displayName = chat.isGroup ? chat.name : (other?.user.name || other?.user.username || "User");
+                const displayImage = other?.user.image;
+                const isActive = chat.id === activeChatId;
+
+                return (
+                  <button
+                    key={chat.id}
+                    onClick={() => { setActiveChatId(chat.id); setMobileShowChat(true); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${
+                      isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.02]"
+                    }`}
+                  >
+                    {displayImage ? (
+                      <img src={displayImage} alt="" className="w-9 h-9 rounded-full flex-shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-emerald/10 text-emerald text-xs font-semibold flex items-center justify-center flex-shrink-0">
+                        {getInitials(displayName || "U")}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-white font-medium truncate">{displayName}</span>
+                        {chat.lastMessage && (
+                          <span className="text-[10px] text-dim flex-shrink-0 ml-2">
+                            {formatTime(chat.lastMessage.createdAt)}
+                          </span>
+                        )}
+                      </div>
+                      {chat.lastMessage && (
+                        <p className="text-[11px] text-dim truncate mt-0.5">{chat.lastMessage.content}</p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </aside>
+
+        <main className={`${!mobileShowChat ? "hidden md:flex" : "flex"} flex-1 flex-col bg-background`}>
+          {activeChatId && otherMember ? (
+            <>
+              <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface/50">
+                <button
+                  onClick={() => setMobileShowChat(false)}
+                  className="md:hidden text-dim hover:text-white mr-1"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                {otherMember.user.image ? (
+                  <img src={otherMember.user.image} alt="" className="w-8 h-8 rounded-full" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-emerald/10 text-emerald text-[11px] font-semibold flex items-center justify-center">
+                    {getInitials(otherMember.user.name || "U")}
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium text-white">{otherMember.user.name || otherMember.user.username}</p>
+                  <p className="text-[10px] text-emerald">Online</p>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                <div className="max-w-2xl mx-auto space-y-1">
+                  {messagesQuery.isLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="w-4 h-4 border-2 border-emerald border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    messages.map((msg) => {
+                      const isOwn = msg.senderId === session?.user?.id;
+                      return (
+                        <div key={msg.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
+                          <div className="max-w-[75%]">
+                            <div
+                              className={`text-sm px-3.5 py-2 rounded-2xl ${
+                                isOwn
+                                  ? "bg-emerald/10 text-white border border-emerald/10 rounded-br-md"
+                                  : "bg-white/[0.03] text-white border border-border rounded-bl-md"
+                              }`}
+                            >
+                              {msg.content}
+                            </div>
+                            <p className={`text-[10px] text-dim mt-0.5 ${isOwn ? "text-right" : "text-left"}`}>
+                              {formatTime(msg.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  {typingText && (
+                    <div className="flex items-center gap-1.5 px-1 py-1">
+                      <div className="flex gap-0.5">
+                        <span className="w-1 h-1 rounded-full bg-dim typing-dot-1" />
+                        <span className="w-1 h-1 rounded-full bg-dim typing-dot-2" />
+                        <span className="w-1 h-1 rounded-full bg-dim typing-dot-3" />
+                      </div>
+                      <span className="text-[10px] text-dim">{typingText}</span>
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </div>
+              </div>
+
+              <div className="border-t border-border bg-surface/50 px-4 py-3">
+                <div className="max-w-2xl mx-auto flex gap-2 items-end rounded-2xl bg-white/[0.03] border border-border px-4 py-2 focus-within:border-emerald/30 transition-colors">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => { setInput(e.target.value); handleTyping(); }}
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                    placeholder="Type a message..."
+                    className="flex-1 text-sm text-white placeholder:text-dim/60 outline-none bg-transparent py-1"
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={!connected || !input.trim()}
+                    className="flex-shrink-0 w-8 h-8 rounded-xl bg-emerald/10 text-emerald flex items-center justify-center hover:bg-emerald/20 disabled:opacity-30 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-14 h-14 rounded-2xl bg-emerald/10 border border-emerald/20 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-7 h-7 text-emerald" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                  </svg>
+                </div>
+                <p className="text-sm text-dim">Select a conversation to start messaging</p>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
