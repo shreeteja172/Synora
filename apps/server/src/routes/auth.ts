@@ -25,6 +25,9 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  account: {
+		skipStateCookieCheck: true,
+	},
 
   socialProviders: {
     google: {
