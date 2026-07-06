@@ -2,13 +2,15 @@ import { WebSocket } from "ws";
 
 export interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
+  userName?: string;
 }
 
 class WebSocketManager {
   private clients = new Map<string, AuthenticatedWebSocket>();
 
-  connect(userId: string, ws: AuthenticatedWebSocket) {
+  connect(userId: string, ws: AuthenticatedWebSocket, name: string) {
     ws.userId = userId;
+    ws.userName = name;
     this.clients.set(userId, ws);
 
     console.log(`${userId} connected`);

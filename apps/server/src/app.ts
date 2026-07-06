@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./routes/auth";
 import "./config/env";
@@ -16,30 +17,60 @@ app.use(
   }),
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
 
 app.use((req, _res, next) => {
   const cookieHeader = req.headers.cookie;
   if (cookieHeader) {
-    const decoded = cookieHeader
-      .split(";")
-      .map((c) => {
-        const [name, ...rest] = c.split("=");
-        const value = rest.join("=");
-        if (name.trim() === "better-auth.session_token") {
-          return `${name}=${decodeURIComponent(value)}`;
-        }
-        return c;
-      })
-      .join(";");
-    req.headers.cookie = decoded;
+    try {
+      const decoded = cookieHeader
+        .split(";")
+        .map((c) => {
+          const [name, ...rest] = c.split("=");
+          const value = rest.join("=");
+          if (name.trim() === "better-auth.session_token") {
+            return `${name}=${decodeURIComponent(value)}`;
+          }
+          return c;
+        })
+        .join(";");
+      req.headers.cookie = decoded;
+    } catch {
+      next();
+      return;
+    }
   }
   next();
 });
 
+const otpRequestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3,
+  message: { message: "Too many OTP requests. Try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.body?.email || req.ip || "unknown",
+});
+
+const otpVerifyLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  message: { message: "Too many verification attempts. Request a new OTP." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.body?.email || req.ip || "unknown",
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use("/api/otp", otpRoutes);
-app.use("/api/chats", chatRoutes);
+app.use("/api/chats", apiLimiter, chatRoutes);
 const port = process.env.PORT || 4000;
 
 const server = app.listen(port, () => {
