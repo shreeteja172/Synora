@@ -41,7 +41,9 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
   useEffect(() => {
     if (!session) return;
 
-    const ws = new WebSocket(wsUrl);
+    const wsEndpoint = new URL(wsUrl);
+    wsEndpoint.searchParams.set("token", session.session.token);
+    const ws = new WebSocket(wsEndpoint.toString());
 
     ws.onopen = () => setConnected(true);
     ws.onclose = () => {
