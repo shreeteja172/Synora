@@ -7,6 +7,7 @@ import "./config/env";
 import { otpRoutes } from "./routes/otp.routes";
 import { initWebSocket } from "./websocket/index";
 import { chatRoutes } from "./routes/chat.routes";
+import { prisma } from "./db";
 
 const app = express();
 
@@ -66,6 +67,15 @@ const apiLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+app.get("/health", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: "degraded", timestamp: new Date().toISOString() });
+  }
 });
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
