@@ -2,7 +2,7 @@ import { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { type WsMessage, MessageType } from "@repo/types/ws";
 import { handleMessage } from "./handlers/message";
-import { auth } from "../routes/auth";
+import { authenticate } from "./auth";
 import { prisma } from "../db";
 import { manager, type AuthenticatedWebSocket } from "./manager";
 
@@ -10,45 +10,23 @@ export const initWebSocket = (server: Server) => {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 100 });
 
   server.on("upgrade", (request, socket, head) => {
-    const url = new URL(
-      request.url || "",
-      `http://${request.headers.host || "localhost"}`,
-    );
-    const token = url.searchParams.get("token");
-    const cookieHeader = request.headers.cookie;
-
-    const headers = cookieHeader
-      ? { cookie: cookieHeader }
-      : token
-        ? { cookie: `better-auth.session_token=${decodeURIComponent(token)}` }
-        : null;
-
-    if (!headers) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-      socket.destroy();
-      return;
-    }
-
-    auth.api
-      .getSession({
-        headers,
-      })
-      .then(async (session) => {
-        if (!session) {
+    authenticate(request)
+      .then(async (sessionUser) => {
+        if (!sessionUser) {
           socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
           socket.destroy();
           return;
         }
 
-        const user = await prisma.user.findUnique({
-          where: { id: session.user.id },
+        const profile = await prisma.user.findUnique({
+          where: { id: sessionUser.id },
           select: { name: true },
         });
 
         wss.handleUpgrade(request, socket, head, (ws) => {
           const client = ws as AuthenticatedWebSocket;
-          client.userId = session.user.id;
-          client.userName = user?.name || "User";
+          client.userId = sessionUser.id;
+          client.userName = profile?.name || "User";
           wss.emit("connection", client, request);
         });
       })
