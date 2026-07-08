@@ -1,19 +1,33 @@
 "use client";
 
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import Image from "next/image";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { useSession } from "@/lib/auth-client";
 import type { Chat, Message } from "../types";
-import { MessageInput } from "./MessageInput";
+import { MemoMessageInput } from "./MessageInput";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
   withCredentials: true,
 });
 
-async function fetchMessages(chatId: string): Promise<Message[]> {
-  const { data } = await api.get<Message[]>(`/api/chats/${chatId}/messages`);
+const PAGE_SIZE = 30;
+
+async function fetchMessages({
+  chatId,
+  before,
+}: {
+  chatId: string;
+  before?: string;
+}): Promise<Message[]> {
+  const { data } = await api.get<Message[]>(`/api/chats/${chatId}/messages`, {
+    params: {
+      limit: PAGE_SIZE,
+      ...(before ? { before } : {}),
+    },
+  });
   return data.reverse();
 }
 
@@ -46,6 +60,57 @@ interface ChatWindowProps {
   onBack: () => void;
 }
 
+const MessageList = memo(function MessageList({
+  messages,
+  userId,
+  isLoading,
+}: {
+  messages: Message[];
+  userId: string | undefined;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-4 h-4 border-2 border-emerald border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {messages.map((msg) => {
+        const isOwn = msg.senderId === userId;
+        return (
+          <div
+            key={msg.id}
+            className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
+          >
+            <div className="max-w-[75%]">
+              <div
+                className={`text-sm px-3.5 py-2 rounded-2xl ${
+                  isOwn
+                    ? "bg-emerald/10 text-white border border-emerald/10 rounded-br-md"
+                    : "bg-white/3 text-white border border-border rounded-bl-md"
+                }`}
+              >
+                {msg.content}
+              </div>
+              <p
+                className={`text-[10px] text-dim mt-0.5 ${
+                  isOwn ? "text-right" : "text-left"
+                }`}
+              >
+                {formatTime(msg.createdAt)}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
 export function ChatWindow({
   chat,
   connected,
@@ -56,18 +121,96 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const { data: session } = useSession();
   const chatId = chat?.id ?? null;
+  const messageScrollRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const previousScrollHeightRef = useRef(0);
+  const previousChatIdRef = useRef<string | null>(null);
+  const isInitialHydratedRef = useRef(false);
+  const isLoadingOlderRef = useRef(false);
 
   const otherMember = chat?.members.find(
     (m) => m.user.id !== session?.user?.id,
   );
 
-  const messagesQuery = useQuery({
-    queryKey: ["messages", chatId],
-    queryFn: () => fetchMessages(chatId!),
+  const messagesQuery = useInfiniteQuery<Message[]>({
+    queryKey: ["messages", chatId] as const,
+    queryFn: ({ pageParam }) =>
+      fetchMessages({
+        chatId: chatId!,
+        before: pageParam as string | undefined,
+      }),
     enabled: !!chatId,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: () => undefined,
+    getPreviousPageParam: (firstPage) => {
+      if (firstPage.length < PAGE_SIZE) return undefined;
+      return firstPage[0]?.createdAt;
+    },
   });
 
-  const messages = messagesQuery.data ?? [];
+  const messages = useMemo(
+    () => messagesQuery.data?.pages.flat() ?? [],
+    [messagesQuery.data],
+  );
+
+  const loadOlderMessages = async () => {
+    console.log({
+      hasPreviousPage: messagesQuery.hasPreviousPage, 
+      isFetching: messagesQuery.isFetchingPreviousPage,
+    });
+    if (
+      !messagesQuery.hasPreviousPage ||
+      messagesQuery.isFetchingPreviousPage ||
+      !chatId
+    ) {
+      return;
+    }
+
+    const scroller = messageScrollRef.current;
+    if (!scroller) return;
+
+    previousScrollHeightRef.current = scroller.scrollHeight;
+    isLoadingOlderRef.current = true;
+    await messagesQuery.fetchPreviousPage();
+  };
+
+  useEffect(() => {
+    shouldStickToBottomRef.current = true;
+    isInitialHydratedRef.current = false;
+    isLoadingOlderRef.current = false;
+  }, [chatId]);
+
+  useLayoutEffect(() => {
+    const scroller = messageScrollRef.current;
+    if (!scroller) return;
+
+    if (previousChatIdRef.current !== chatId) {
+      previousChatIdRef.current = chatId;
+      scroller.scrollTop = scroller.scrollHeight;
+      isInitialHydratedRef.current = true;
+      return;
+    }
+
+    if (!isInitialHydratedRef.current && messages.length > 0) {
+      scroller.scrollTop = scroller.scrollHeight;
+      isInitialHydratedRef.current = true;
+      previousScrollHeightRef.current = scroller.scrollHeight;
+      return;
+    }
+
+    if (isLoadingOlderRef.current) {
+      const heightDelta =
+        scroller.scrollHeight - previousScrollHeightRef.current;
+      scroller.scrollTop = scroller.scrollTop + heightDelta;
+      previousScrollHeightRef.current = scroller.scrollHeight;
+      isLoadingOlderRef.current = false;
+      return;
+    }
+
+    if (shouldStickToBottomRef.current) {
+      scroller.scrollTop = scroller.scrollHeight;
+    }
+  }, [messages.length, chatId]);
 
   if (!chat || !otherMember) {
     return (
@@ -138,42 +281,27 @@ export function ChatWindow({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={messageScrollRef}
+        onScroll={(e) => {
+          const target = e.currentTarget;
+          const nearBottom =
+            target.scrollTop + target.clientHeight >= target.scrollHeight - 120;
+          shouldStickToBottomRef.current = nearBottom;
+
+          if (target.scrollTop <= 40) {
+            void loadOlderMessages();
+          }
+        }}
+        className="flex-1 overflow-y-auto px-4 py-4"
+        style={{ overflowAnchor: "none" }}
+      >
         <div className="max-w-2xl mx-auto space-y-1">
-          {messagesQuery.isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-4 h-4 border-2 border-emerald border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : (
-            messages.map((msg) => {
-              const isOwn = msg.senderId === session?.user?.id;
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
-                >
-                  <div className="max-w-[75%]">
-                    <div
-                      className={`text-sm px-3.5 py-2 rounded-2xl ${
-                        isOwn
-                          ? "bg-emerald/10 text-white border border-emerald/10 rounded-br-md"
-                          : "bg-white/3 text-white border border-border rounded-bl-md"
-                      }`}
-                    >
-                      {msg.content}
-                    </div>
-                    <p
-                      className={`text-[10px] text-dim mt-0.5 ${
-                        isOwn ? "text-right" : "text-left"
-                      }`}
-                    >
-                      {formatTime(msg.createdAt)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          )}
+          <MessageList
+            messages={messages}
+            userId={session?.user?.id}
+            isLoading={messagesQuery.isLoading}
+          />
           {typingText && (
             <div className="flex items-center gap-1.5 px-1 py-1">
               <div className="flex gap-0.5">
@@ -187,7 +315,7 @@ export function ChatWindow({
         </div>
       </div>
 
-      <MessageInput
+      <MemoMessageInput
         chatId={chat.id}
         connected={connected}
         onSendMessage={onSendMessage}

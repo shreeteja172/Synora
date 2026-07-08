@@ -16,6 +16,7 @@ export interface Sender {
 export interface MessagePayload {
   chatId: string;
   content: string;
+  clientMessageId?: string;
 }
 
 export interface NewMessagePayload {
@@ -24,6 +25,7 @@ export interface NewMessagePayload {
   content: string;
   senderId: string;
   createdAt: string;
+  clientMessageId?: string;
 }
 
 export interface TypingPayload {

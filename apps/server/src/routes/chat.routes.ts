@@ -90,7 +90,7 @@ chatRoutes.post("/", async (req, res) => {
     if (existingChat) {
       return res.json(existingChat);
     }
-    
+
     const chat = await prisma.chat.create({
       data: {
         isGroup: false,
@@ -109,7 +109,7 @@ chatRoutes.post("/", async (req, res) => {
         members: true,
       },
     });
-    
+
     return res.status(201).json(chat);
   } catch (error) {
     console.error(error);
@@ -221,14 +221,19 @@ chatRoutes.get("/:chatId/messages", async (req, res) => {
         message: "Chat not found",
       });
     }
+
+    const limit = Math.min(Number(req.query.limit) || 30, 100);
+    const before = req.query.before as string | undefined;
+
     const messages = await prisma.message.findMany({
       where: {
         chatId,
+        ...(before ? { createdAt: { lt: new Date(before) } } : {}),
       },
       orderBy: {
         createdAt: "desc",
       },
-      take: 30,
+      take: limit,
     });
     return res.json(messages);
   } catch (error) {

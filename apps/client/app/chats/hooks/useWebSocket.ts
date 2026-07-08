@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MessageType, type WsMessage } from "@repo/types/ws";
 import { useSession } from "@/lib/auth-client";
-import type { Message } from "../types";
+import type { Chat, Message } from "../types";
 
 interface UseWebSocketOptions {
   activeChatId: string | null;
@@ -44,6 +44,23 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
     }
   }, []);
   const activeChatIdRef = useRef<string | null>(null);
+
+  const updateInfiniteMessagesCache = useCallback(
+    (chatId: string, updater: (pages: Message[][]) => Message[][]) => {
+      qc.setQueryData(
+        ["messages", chatId],
+        (old: { pages?: Message[][]; pageParams?: unknown[] } | undefined) => {
+          if (!old) return old;
+
+          return {
+            pages: updater(old?.pages ?? []),
+            pageParams: old?.pageParams ?? [],
+          };
+        },
+      );
+    },
+    [qc],
+  );
 
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
@@ -103,23 +120,59 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
             case MessageType.NEW_MESSAGE: {
               const p = msg.payload;
               if (p.chatId === activeChatIdRef.current) {
-                qc.setQueryData<Message[]>(
-                  ["messages", activeChatIdRef.current],
-                  (old) => {
-                    if (!old) return old;
-                    if (old.some((m) => m.id === p.id)) return old;
+                updateInfiniteMessagesCache(p.chatId, (pages) => {
+                  const updatedPages = pages.map((page) =>
+                    page.map((message) =>
+                      message.id === p.clientMessageId
+                        ? {
+                            id: p.id,
+                            content: p.content,
+                            chatId: p.chatId,
+                            senderId: p.senderId,
+                            createdAt: p.createdAt,
+                          }
+                        : message,
+                    ),
+                  );
+
+                  const alreadyPresent = updatedPages.some((page) =>
+                    page.some((message) => message.id === p.id),
+                  );
+
+                  if (alreadyPresent) {
+                    return updatedPages;
+                  }
+
+                  if (updatedPages.length === 0) {
                     return [
-                      ...old,
-                      {
-                        id: p.id,
-                        content: p.content,
-                        chatId: p.chatId,
-                        senderId: p.senderId,
-                        createdAt: p.createdAt,
-                      },
+                      [
+                        {
+                          id: p.id,
+                          content: p.content,
+                          chatId: p.chatId,
+                          senderId: p.senderId,
+                          createdAt: p.createdAt,
+                        },
+                      ],
                     ];
-                  },
-                );
+                  }
+
+                  const lastPageIndex = updatedPages.length - 1;
+                  return updatedPages.map((page, index) =>
+                    index === lastPageIndex
+                      ? [
+                          ...page,
+                          {
+                            id: p.id,
+                            content: p.content,
+                            chatId: p.chatId,
+                            senderId: p.senderId,
+                            createdAt: p.createdAt,
+                          },
+                        ]
+                      : page,
+                  );
+                });
               }
               qc.invalidateQueries({ queryKey: ["chats"] });
               break;
@@ -180,22 +233,71 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
       wsRef.current?.close();
       clearTypingThrottle();
     };
-  }, [session, wsUrl, qc, clearTypingThrottle, clearReconnectTimeout]);
+  }, [
+    session,
+    wsUrl,
+    qc,
+    clearTypingThrottle,
+    clearReconnectTimeout,
+    updateInfiniteMessagesCache,
+  ]);
 
-  const sendMessage = useCallback((chatId: string, content: string) => {
-    if (
-      !wsRef.current ||
-      wsRef.current.readyState !== WebSocket.OPEN ||
-      !content.trim()
-    )
-      return;
-    wsRef.current.send(
-      JSON.stringify({
-        type: MessageType.MESSAGE,
-        payload: { chatId, content },
-      }),
-    );
-  }, []);
+  const sendMessage = useCallback(
+    (chatId: string, content: string) => {
+      if (
+        !wsRef.current ||
+        wsRef.current.readyState !== WebSocket.OPEN ||
+        !content.trim()
+      )
+        return;
+
+      const clientMessageId = crypto.randomUUID();
+      const optimisticMessage: Message = {
+        id: clientMessageId,
+        content,
+        chatId,
+        senderId: session?.user?.id || "",
+        createdAt: new Date().toISOString(),
+      };
+
+      updateInfiniteMessagesCache(chatId, (pages) => {
+        if (pages.length === 0) {
+          return [[optimisticMessage]];
+        }
+
+        const lastPageIndex = pages.length - 1;
+        return pages.map((page, index) =>
+          index === lastPageIndex ? [...page, optimisticMessage] : page,
+        );
+      });
+
+      qc.setQueryData<Chat[]>(["chats"], (old) => {
+        if (!old) return old;
+
+        return old.map((chat) =>
+          chat.id === chatId
+            ? {
+                ...chat,
+                lastMessage: {
+                  id: clientMessageId,
+                  content,
+                  senderId: session?.user?.id || "",
+                  createdAt: optimisticMessage.createdAt,
+                },
+              }
+            : chat,
+        );
+      });
+
+      wsRef.current.send(
+        JSON.stringify({
+          type: MessageType.MESSAGE,
+          payload: { chatId, content, clientMessageId },
+        }),
+      );
+    },
+    [qc, session, updateInfiniteMessagesCache],
+  );
 
   const sendTyping = useCallback(
     (chatId: string) => {

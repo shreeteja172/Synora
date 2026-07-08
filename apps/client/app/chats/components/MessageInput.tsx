@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { memo, useState } from "react";
 
 interface MessageInputProps {
   chatId: string;
@@ -9,22 +9,13 @@ interface MessageInputProps {
   onSendTyping: (chatId: string) => void;
 }
 
-export function MessageInput({
+function MessageInput({
   chatId,
   connected,
   onSendMessage,
   onSendTyping,
 }: MessageInputProps) {
   const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -38,7 +29,7 @@ export function MessageInput({
 
   return (
     <div className="border-t border-border bg-surface/50 px-4 py-3">
-      <div className="max-w-2xl mx-auto flex gap-2 items-end rounded-2xl bg-white/[0.03] border border-border px-4 py-2 focus-within:border-emerald/30 transition-colors">
+      <div className="max-w-2xl mx-auto flex gap-2 items-end rounded-2xl bg-white/3 border border-border px-4 py-2 focus-within:border-emerald/30 transition-colors">
         <input
           type="text"
           value={input}
@@ -46,9 +37,7 @@ export function MessageInput({
             setInput(e.target.value);
             handleTyping();
           }}
-          onKeyDown={(e) =>
-            e.key === "Enter" && !e.shiftKey && handleSend()
-          }
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
           placeholder="Type a message..."
           className="flex-1 text-sm text-white placeholder:text-dim/60 outline-none bg-transparent py-1"
         />
@@ -75,3 +64,5 @@ export function MessageInput({
     </div>
   );
 }
+
+export const MemoMessageInput = memo(MessageInput);

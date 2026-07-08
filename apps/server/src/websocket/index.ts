@@ -57,6 +57,7 @@ export const initWebSocket = (server: Server) => {
               senderId: ws.userId!,
               chatId: message.payload.chatId,
               content: message.payload.content,
+              clientMessageId: message.payload.clientMessageId,
             });
 
             for (const userId of result.memberIds) {

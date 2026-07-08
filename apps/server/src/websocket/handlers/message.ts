@@ -4,12 +4,14 @@ type HandleMessageParams = {
   senderId: string;
   chatId: string;
   content: string;
+  clientMessageId?: string;
 };
 
 export async function handleMessage({
   senderId,
   chatId,
   content,
+  clientMessageId,
 }: HandleMessageParams) {
   const chat = await prisma.chat.findFirst({
     where: {
@@ -48,6 +50,7 @@ export async function handleMessage({
       content: savedMessage.content,
       senderId: savedMessage.senderId,
       createdAt: savedMessage.createdAt.toISOString(),
+      clientMessageId,
       sender: sender
         ? { id: sender.id, name: sender.name || "User", image: sender.image }
         : { id: senderId, name: "User" },

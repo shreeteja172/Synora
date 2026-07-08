@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { useSession, signOut } from "@/lib/auth-client";
 import type { Chat } from "./types";
 import { useWebSocket } from "./hooks/useWebSocket";
-import { ChatList } from "./components/ChatList";
+import { MemoChatList } from "./components/MemoChatList";
 import { ChatWindow } from "./components/ChatWindow";
 
 const api = axios.create({
@@ -32,7 +32,6 @@ function getInitials(name: string) {
 
 export default function ChatPage() {
   const router = useRouter();
-  const qc = useQueryClient();
   const { data: session, isPending: sessionLoading } = useSession();
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -125,7 +124,7 @@ export default function ChatPage() {
             </div>
             <button
               onClick={handleSignOut}
-              className="text-[10px] text-dim hover:text-white transition-colors px-1.5 py-1 rounded hover:bg-white/[0.03]"
+              className="text-[10px] text-dim hover:text-white transition-colors px-1.5 py-1 rounded hover:bg-white/3"
             >
               Sign out
             </button>
@@ -134,7 +133,7 @@ export default function ChatPage() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <ChatList
+        <MemoChatList
           activeChatId={activeChatId}
           onSelectChat={handleSelectChat}
           mobileShowChat={mobileShowChat}
