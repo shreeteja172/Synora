@@ -20,6 +20,11 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
 
   const wsRef = useRef<WebSocket | null>(null);
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const shouldReconnectRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
 
   const [connected, setConnected] = useState(false);
   const [typingSenders, setTypingSenders] = useState<Map<string, TypingSender>>(
@@ -32,6 +37,12 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
       typingThrottleRef.current = null;
     }
   }, []);
+  const clearReconnectTimeout = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
   const activeChatIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -41,91 +52,143 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
   useEffect(() => {
     if (!session) return;
 
-    const wsEndpoint = new URL(wsUrl);
-    wsEndpoint.searchParams.set("token", session.session.token);
-    const ws = new WebSocket(wsEndpoint.toString());
+    const connect = () => {
+      clearReconnectTimeout();
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => {
-      setConnected(false);
-      wsRef.current = null;
-    };
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === WebSocket.OPEN ||
+          wsRef.current.readyState === WebSocket.CONNECTING)
+      ) {
+        return;
+      }
 
-    ws.onerror = () => {
-      setConnected(false);
-    };
-    ws.onmessage = (e) => {
-      try {
-        const msg: WsMessage = JSON.parse(e.data);
+      const wsEndpoint = new URL(wsUrl);
+      wsEndpoint.searchParams.set("token", session.session.token);
+      const ws = new WebSocket(wsEndpoint.toString());
 
-        switch (msg.type) {
-          case MessageType.NEW_MESSAGE: {
-            const p = msg.payload;
-            if (p.chatId === activeChatIdRef.current) {
-              qc.setQueryData<Message[]>(
-                ["messages", activeChatIdRef.current],
-                (old) => {
-                  if (!old) return old;
-                  if (old.some((m) => m.id === p.id)) return old;
-                  return [
-                    ...old,
-                    {
-                      id: p.id,
-                      content: p.content,
-                      chatId: p.chatId,
-                      senderId: p.senderId,
-                      createdAt: p.createdAt,
-                    },
-                  ];
-                },
-              );
-            }
-            qc.invalidateQueries({ queryKey: ["chats"] });
-            break;
-          }
+      shouldReconnectRef.current = true;
+      wsRef.current = ws;
 
-          case MessageType.MESSAGE: {
-            qc.invalidateQueries({
-              queryKey: ["messages", msg.payload.chatId],
-            });
-            qc.invalidateQueries({ queryKey: ["chats"] });
-            break;
-          }
+      ws.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+        setConnected(true);
+      };
 
-          case MessageType.TYPING: {
-            if (msg.payload.sender.id === session?.user?.id) break;
-            if (msg.payload.chatId !== activeChatIdRef.current) break;
-            const senderId = msg.payload.sender.id;
-            setTypingSenders((prev) => {
-              const next = new Map(prev);
-              const existing = next.get(senderId);
-              if (existing) clearTimeout(existing.timeout);
-              const timeout = setTimeout(() => {
-                setTypingSenders((p) => {
-                  const n = new Map(p);
-                  n.delete(senderId);
-                  return n;
-                });
-              }, 2000);
-              next.set(senderId, { name: msg.payload.sender.name, timeout });
-              return next;
-            });
-            break;
-          }
+      ws.onclose = () => {
+        setConnected(false);
+
+        if (wsRef.current === ws) {
+          wsRef.current = null;
         }
-      } catch {}
+
+        if (!shouldReconnectRef.current) {
+          return;
+        }
+
+        const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 10000);
+        reconnectAttemptsRef.current += 1;
+        reconnectTimeoutRef.current = setTimeout(connect, delay);
+      };
+
+      ws.onerror = () => {
+        setConnected(false);
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg: WsMessage = JSON.parse(e.data);
+
+          switch (msg.type) {
+            case MessageType.NEW_MESSAGE: {
+              const p = msg.payload;
+              if (p.chatId === activeChatIdRef.current) {
+                qc.setQueryData<Message[]>(
+                  ["messages", activeChatIdRef.current],
+                  (old) => {
+                    if (!old) return old;
+                    if (old.some((m) => m.id === p.id)) return old;
+                    return [
+                      ...old,
+                      {
+                        id: p.id,
+                        content: p.content,
+                        chatId: p.chatId,
+                        senderId: p.senderId,
+                        createdAt: p.createdAt,
+                      },
+                    ];
+                  },
+                );
+              }
+              qc.invalidateQueries({ queryKey: ["chats"] });
+              break;
+            }
+
+            case MessageType.MESSAGE: {
+              qc.invalidateQueries({
+                queryKey: ["messages", msg.payload.chatId],
+              });
+              qc.invalidateQueries({ queryKey: ["chats"] });
+              break;
+            }
+
+            case MessageType.TYPING: {
+              if (msg.payload.sender.id === session?.user?.id) break;
+              if (msg.payload.chatId !== activeChatIdRef.current) break;
+              const senderId = msg.payload.sender.id;
+              setTypingSenders((prev) => {
+                const next = new Map(prev);
+                const existing = next.get(senderId);
+                if (existing) clearTimeout(existing.timeout);
+                const timeout = setTimeout(() => {
+                  setTypingSenders((p) => {
+                    const n = new Map(p);
+                    n.delete(senderId);
+                    return n;
+                  });
+                }, 2000);
+                next.set(senderId, { name: msg.payload.sender.name, timeout });
+                return next;
+              });
+              break;
+            }
+          }
+        } catch {}
+      };
     };
 
-    wsRef.current = ws;
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        connect();
+      }
+    };
+
+    connect();
+    window.addEventListener("focus", handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      ws.close();
+      shouldReconnectRef.current = false;
+      clearReconnectTimeout();
+      window.removeEventListener("focus", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      wsRef.current?.close();
       clearTypingThrottle();
     };
-  }, [session, wsUrl, qc, clearTypingThrottle]);
+  }, [session, wsUrl, qc, clearTypingThrottle, clearReconnectTimeout]);
 
   const sendMessage = useCallback((chatId: string, content: string) => {
-    if (!wsRef.current || !content.trim()) return;
+    if (
+      !wsRef.current ||
+      wsRef.current.readyState !== WebSocket.OPEN ||
+      !content.trim()
+    )
+      return;
     wsRef.current.send(
       JSON.stringify({
         type: MessageType.MESSAGE,
@@ -136,7 +199,13 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
 
   const sendTyping = useCallback(
     (chatId: string) => {
-      if (!wsRef.current || !chatId || typingThrottleRef.current) return;
+      if (
+        !wsRef.current ||
+        wsRef.current.readyState !== WebSocket.OPEN ||
+        !chatId ||
+        typingThrottleRef.current
+      )
+        return;
       wsRef.current.send(
         JSON.stringify({
           type: MessageType.TYPING,
