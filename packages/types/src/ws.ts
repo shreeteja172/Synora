@@ -3,6 +3,7 @@ export const MessageType = {
   TYPING: "TYPING",
   SEEN: "SEEN",
   NEW_MESSAGE: "NEW_MESSAGE",
+  PRESENCE: "PRESENCE",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -38,6 +39,11 @@ export interface SeenPayload {
   sender: Sender;
 }
 
+export interface PresencePayload {
+  userId: string;
+  online: boolean;
+}
+
 export interface BaseMessage {
   type: MessageType;
 }
@@ -62,8 +68,14 @@ export interface SeenMessage extends BaseMessage {
   payload: SeenPayload;
 }
 
+export interface PresenceMessage extends BaseMessage {
+  type: "PRESENCE";
+  payload: PresencePayload;
+}
+
 export type WsMessage =
   | ChatMessage
   | NewMessageServer
   | TypingMessage
-  | SeenMessage;
+  | SeenMessage
+  | PresenceMessage;

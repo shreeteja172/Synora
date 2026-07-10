@@ -55,6 +55,7 @@ interface ChatWindowProps {
   chat: Chat | undefined;
   connected: boolean;
   typingText: string;
+  onlineUserIds: Set<string>;
   onSendMessage: (chatId: string, content: string) => void;
   onSendTyping: (chatId: string) => void;
   onBack: () => void;
@@ -115,6 +116,7 @@ export function ChatWindow({
   chat,
   connected,
   typingText,
+  onlineUserIds,
   onSendMessage,
   onSendTyping,
   onBack,
@@ -131,6 +133,10 @@ export function ChatWindow({
   const otherMember = chat?.members.find(
     (m) => m.user.id !== session?.user?.id,
   );
+
+  const isOnline = otherMember
+    ? onlineUserIds.has(otherMember.user.id)
+    : false;
 
   const messagesQuery = useInfiniteQuery<Message[]>({
     queryKey: ["messages", chatId] as const,
@@ -277,7 +283,9 @@ export function ChatWindow({
           <p className="text-sm font-medium text-white">
             {otherMember.user.name || otherMember.user.username}
           </p>
-          <p className="text-[10px] text-emerald">Online</p>
+          <p className={`text-[10px] ${isOnline ? "text-emerald" : "text-dim"}`}>
+            {isOnline ? "Online" : "Offline"}
+          </p>
         </div>
       </div>
 

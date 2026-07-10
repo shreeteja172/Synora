@@ -27,6 +27,7 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
   const reconnectAttemptsRef = useRef(0);
 
   const [connected, setConnected] = useState(false);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [typingSenders, setTypingSenders] = useState<Map<string, TypingSender>>(
     new Map(),
   );
@@ -90,6 +91,7 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
       ws.onopen = () => {
         reconnectAttemptsRef.current = 0;
         setConnected(true);
+        setOnlineUserIds(new Set());
       };
 
       ws.onclose = () => {
@@ -202,6 +204,17 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
                   });
                 }, 2000);
                 next.set(senderId, { name: msg.payload.sender.name, timeout });
+                return next;
+              });
+              break;
+            }
+
+            case MessageType.PRESENCE: {
+              const { userId, online } = msg.payload;
+              setOnlineUserIds((prev) => {
+                const next = new Set(prev);
+                if (online) next.add(userId);
+                else next.delete(userId);
                 return next;
               });
               break;
@@ -342,5 +355,6 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
     sendMessage,
     sendTyping,
     typingText,
+    onlineUserIds,
   };
 }

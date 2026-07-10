@@ -6,6 +6,40 @@ import { authenticate } from "./auth";
 import { prisma } from "../db";
 import { manager, type AuthenticatedWebSocket } from "./manager";
 
+async function getChatPartnerIds(userId: string): Promise<string[]> {
+  const partners = await prisma.chatMember.findMany({
+    where: {
+      chat: { members: { some: { userId } } },
+      userId: { not: userId },
+    },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+  return partners.map((p) => p.userId);
+}
+
+async function broadcastPresence(userId: string, online: boolean) {
+  const partnerIds = await getChatPartnerIds(userId);
+  for (const partnerId of partnerIds) {
+    manager.send(partnerId, {
+      type: MessageType.PRESENCE,
+      payload: { userId, online },
+    });
+  }
+}
+
+async function sendInitialPresence(userId: string) {
+  const partnerIds = await getChatPartnerIds(userId);
+  for (const partnerId of partnerIds) {
+    if (manager.isOnline(partnerId)) {
+      manager.send(userId, {
+        type: MessageType.PRESENCE,
+        payload: { userId: partnerId, online: true },
+      });
+    }
+  }
+}
+
 export const initWebSocket = (server: Server) => {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 100 });
 
@@ -41,6 +75,13 @@ export const initWebSocket = (server: Server) => {
     if (!ws.userId) return;
 
     manager.connect(ws.userId, ws, ws.userName || "User");
+
+    void sendInitialPresence(ws.userId).catch((err) =>
+      console.error("[WS] Initial presence error:", err),
+    );
+    void broadcastPresence(ws.userId, true).catch((err) =>
+      console.error("[WS] Presence broadcast error:", err),
+    );
 
     ws.on("message", async (data) => {
       try {
@@ -121,6 +162,9 @@ export const initWebSocket = (server: Server) => {
     ws.on("close", () => {
       if (ws.userId) {
         manager.disconnect(ws.userId);
+        void broadcastPresence(ws.userId, false).catch((err) =>
+          console.error("[WS] Presence broadcast error:", err),
+        );
       }
     });
 

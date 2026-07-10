@@ -43,9 +43,10 @@ export default function ChatPage() {
     enabled: !!session,
   });
 
-  const { connected, sendMessage, sendTyping, typingText } = useWebSocket({
-    activeChatId,
-  });
+  const { connected, sendMessage, sendTyping, typingText, onlineUserIds } =
+    useWebSocket({
+      activeChatId,
+    });
 
   const activeChat = chatsQuery.data?.find((c) => c.id === activeChatId);
 
@@ -148,6 +149,7 @@ export default function ChatPage() {
             chat={activeChat}
             connected={connected}
             typingText={typingText}
+            onlineUserIds={onlineUserIds}
             onSendMessage={sendMessage}
             onSendTyping={sendTyping}
             onBack={() => setMobileShowChat(false)}
