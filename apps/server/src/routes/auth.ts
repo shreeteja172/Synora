@@ -3,6 +3,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "../db";
 import "../config/env";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
@@ -20,17 +22,14 @@ export const auth = betterAuth({
 
   advanced: {
     defaultCookieAttributes: {
-      secure: true,
+      secure: isProduction,
       httpOnly: true,
-      sameSite: "none",
+      sameSite: isProduction ? "none" : "lax",
     },
   },
 
   emailAndPassword: {
     enabled: true,
-  },
-  account: {
-    skipStateCookieCheck: true,
   },
 
   socialProviders: {
