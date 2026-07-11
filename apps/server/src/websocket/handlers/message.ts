@@ -30,7 +30,7 @@ export async function handleMessage({
 
   await prisma.chat.update({
     where: { id: chatId },
-    data: {},
+    data: { updatedAt: new Date() },
   });
 
   const chatMembers = await prisma.chatMember.findMany({
