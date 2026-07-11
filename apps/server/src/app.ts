@@ -81,16 +81,20 @@ app.get("/health", async (_req, res) => {
 app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use("/api/otp", otpRoutes);
 app.use("/api/chats", apiLimiter, chatRoutes);
+
+app.use((_req, res) => {
+  res.status(404).json({ message: "Not found" });
+});
+
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("[API] Unhandled error:", err);
+  res.status(500).json({ message: "Internal server error" });
+});
+
 const port = process.env.PORT || 4000;
 
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
-
-// console.log({
-//   BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
-//   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-//   GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
-// });
 
 initWebSocket(server);

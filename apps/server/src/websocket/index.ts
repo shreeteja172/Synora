@@ -5,6 +5,7 @@ import { handleMessage } from "./handlers/message";
 import { authenticate } from "./auth";
 import { prisma } from "../db";
 import { manager, type AuthenticatedWebSocket } from "./manager";
+import { schemas } from "../lib/validate";
 
 async function getChatPartnerIds(userId: string): Promise<string[]> {
   const partners = await prisma.chatMember.findMany({
@@ -41,7 +42,7 @@ async function sendInitialPresence(userId: string) {
 }
 
 export const initWebSocket = (server: Server) => {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 100 });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 
   server.on("upgrade", (request, socket, head) => {
     authenticate(request)
@@ -85,7 +86,15 @@ export const initWebSocket = (server: Server) => {
 
     ws.on("message", async (data) => {
       try {
-        const message: WsMessage = JSON.parse(data.toString());
+        const parsed = JSON.parse(data.toString());
+
+        const validation = schemas.wsMessage.safeParse(parsed);
+        if (!validation.success) {
+          console.error("[WS] Invalid message format:", validation.error.flatten());
+          return;
+        }
+
+        const message = validation.data;
 
         const sender = {
           id: ws.userId!,
@@ -151,8 +160,6 @@ export const initWebSocket = (server: Server) => {
             break;
           }
 
-          default:
-            console.log("[WS] Unknown message type:", message.type);
         }
       } catch (err) {
         console.error("[WS] Invalid message:", err);
