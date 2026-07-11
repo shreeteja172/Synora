@@ -81,8 +81,11 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
         return;
       }
 
+      const sessionToken = session.session?.token;
+      if (!sessionToken) return;
+
       const wsEndpoint = new URL(wsUrl);
-      wsEndpoint.searchParams.set("token", session.session.token);
+      wsEndpoint.searchParams.set("token", sessionToken);
       const ws = new WebSocket(wsEndpoint.toString());
 
       shouldReconnectRef.current = true;

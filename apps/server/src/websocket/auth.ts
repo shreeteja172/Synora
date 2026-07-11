@@ -1,5 +1,6 @@
 import { IncomingMessage } from "http";
 import { getSessionFromHeaders } from "../lib/session";
+import { prisma } from "../db";
 
 export async function authenticate(request: IncomingMessage) {
   const cookieHeader = request.headers.cookie;
@@ -9,17 +10,24 @@ export async function authenticate(request: IncomingMessage) {
   );
   const token = url.searchParams.get("token");
 
-  const headers = cookieHeader
-    ? { cookie: cookieHeader }
-    : token
-      ? { cookie: `better-auth.session_token=${decodeURIComponent(token)}` }
-      : null;
+  if (token) {
+    const session = await prisma.session.findUnique({
+      where: { token: decodeURIComponent(token) },
+      include: { user: true },
+    });
 
-  if (!headers) {
+    if (!session || session.expiresAt < new Date()) {
+      return null;
+    }
+
+    return session.user;
+  }
+
+  if (!cookieHeader) {
     return null;
   }
 
-  const session = await getSessionFromHeaders(headers);
+  const session = await getSessionFromHeaders({ cookie: cookieHeader });
 
   if (!session) {
     return null;
