@@ -1,6 +1,15 @@
 import { z, type ZodSchema } from "zod";
 import type { Request, Response, NextFunction } from "express";
 
+declare global {
+  namespace Express {
+    interface Request {
+      parsedQuery?: unknown;
+      parsedParams?: unknown;
+    }
+  }
+}
+
 export function validateBody<T>(schema: ZodSchema<T>) {
   return (req: Request, res: Response, next: NextFunction) => {
     const result = schema.safeParse(req.body);
@@ -24,7 +33,7 @@ export function validateQuery<T>(schema: ZodSchema<T>) {
         errors: result.error.flatten().fieldErrors,
       });
     }
-    req.query = result.data as Record<string, string | string[] | undefined>;
+    req.parsedQuery = result.data;
     next();
   };
 }
@@ -38,7 +47,7 @@ export function validateParams<T>(schema: ZodSchema<T>) {
         errors: result.error.flatten().fieldErrors,
       });
     }
-    req.params = result.data as Record<string, string>;
+    req.parsedParams = result.data;
     next();
   };
 }

@@ -15,7 +15,7 @@ const otpRequestLimiter = rateLimit({
   message: { message: "Too many OTP requests. Try again later." },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.body?.email || req.ip || "unknown",
+  keyGenerator: (req) => req.body?.email || "unknown",
 });
 
 const otpVerifyLimiter = rateLimit({
@@ -24,7 +24,7 @@ const otpVerifyLimiter = rateLimit({
   message: { message: "Too many verification attempts. Request a new OTP." },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.body?.email || req.ip || "unknown",
+  keyGenerator: (req) => req.body?.email || "unknown",
 });
 
 const MAX_OTP_ATTEMPTS = 5;

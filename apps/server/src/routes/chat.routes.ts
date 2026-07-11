@@ -17,7 +17,7 @@ chatRoutes.get(
       const session = await getSessionFromHeaders(req.headers);
       if (!session) return res.status(401).json({ message: "Unauthorized" });
 
-      const { q } = req.query as { q: string };
+      const { q } = req.parsedQuery as { q: string };
 
       const users = await prisma.user.findMany({
         where: {
@@ -206,9 +206,8 @@ chatRoutes.get(
         });
       }
 
-      const { chatId } = req.params as unknown as { chatId: string };
-      const query = req.query as unknown as { limit: number; before?: string };
-      const { limit, before } = query;
+      const { chatId } = req.parsedParams as { chatId: string };
+      const { limit, before } = req.parsedQuery as { limit: number; before?: string };
 
       const chat = await prisma.chat.findFirst({
         where: {
