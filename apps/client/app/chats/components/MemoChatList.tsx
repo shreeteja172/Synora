@@ -3,14 +3,9 @@
 import { memo, useState } from "react";
 import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import type { Chat, UserSearchResult } from "../types";
-
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
-  withCredentials: true,
-});
 
 async function fetchChats(): Promise<Chat[]> {
   const { data } = await api.get<Chat[]>("/api/chats");

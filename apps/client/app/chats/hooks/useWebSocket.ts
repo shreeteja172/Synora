@@ -223,7 +223,9 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
               break;
             }
           }
-        } catch {}
+        } catch (error) {
+          console.error("Error handling WebSocket message:", error);
+        }
       };
     };
 

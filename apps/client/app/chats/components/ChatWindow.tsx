@@ -3,15 +3,10 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import Image from "next/image";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import type { Chat, Message } from "../types";
 import { MemoMessageInput } from "./MessageInput";
-
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
-  withCredentials: true,
-});
 
 const PAGE_SIZE = 30;
 

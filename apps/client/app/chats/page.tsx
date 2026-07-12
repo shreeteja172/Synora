@@ -4,17 +4,13 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useSession, signOut } from "@/lib/auth-client";
 import type { Chat } from "./types";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { MemoChatList } from "./components/MemoChatList";
 import { ChatWindow } from "./components/ChatWindow";
 
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
-  withCredentials: true,
-});
 
 async function fetchChats(): Promise<Chat[]> {
   const { data } = await api.get<Chat[]>("/api/chats");
