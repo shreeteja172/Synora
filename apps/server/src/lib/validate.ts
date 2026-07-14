@@ -70,15 +70,6 @@ export const schemas = {
     chatId: z.string().cuid(),
   }),
 
-  otpRequest: z.object({
-    email: z.string().email().max(254),
-  }),
-
-  otpVerify: z.object({
-    email: z.string().email().max(254),
-    otp: z.string().length(6),
-  }),
-
   wsMessage: z.discriminatedUnion("type", [
     z.object({
       type: z.literal("MESSAGE"),

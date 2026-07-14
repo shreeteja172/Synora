@@ -4,7 +4,6 @@ import rateLimit from "express-rate-limit";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./routes/auth";
 import "./config/env";
-import { otpRoutes } from "./routes/otp.routes";
 import { initWebSocket } from "./websocket/index";
 import { chatRoutes } from "./routes/chat.routes";
 import { prisma } from "./db";
@@ -44,24 +43,6 @@ app.use((req, _res, next) => {
   next();
 });
 
-const otpRequestLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 3,
-  message: { message: "Too many OTP requests. Try again later." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.body?.email || "unknown",
-});
-
-const otpVerifyLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 10,
-  message: { message: "Too many verification attempts. Request a new OTP." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.body?.email || "unknown",
-});
-
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
@@ -79,7 +60,6 @@ app.get("/health", async (_req, res) => {
 });
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
-app.use("/api/otp", otpRoutes);
 app.use("/api/chats", apiLimiter, chatRoutes);
 
 app.use((_req, res) => {
