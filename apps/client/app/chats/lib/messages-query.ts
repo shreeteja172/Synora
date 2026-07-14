@@ -1,5 +1,6 @@
-import type { QueryClient } from "@tanstack/react-query";
+import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import type { Message } from "../types";
+import { mergeMessagesById } from "./messages-live.ts";
 
 export const PAGE_SIZE = 30;
 export const MESSAGES_STALE_TIME_MS = 60_000;
@@ -28,13 +29,38 @@ async function fetchMessages({
 export function getMessagesInfiniteQueryOptions(chatId: string | null) {
   return {
     queryKey: messagesQueryKey(chatId ?? ""),
-    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      fetchMessages({
+    queryFn: async ({
+      pageParam,
+      client,
+      queryKey,
+    }: {
+      pageParam: string | undefined;
+      client: QueryClient;
+      queryKey: readonly unknown[];
+    }) => {
+      const fetched = await fetchMessages({
         chatId: chatId!,
         before: pageParam,
-      }),
+      });
+
+      // First page only: keep any live WS messages that arrived during the fetch.
+      if (pageParam) {
+        return fetched;
+      }
+
+      const existing = client.getQueryData(queryKey) as
+        | InfiniteData<Message[]>
+        | undefined;
+      const cached = existing?.pages?.flat() ?? [];
+      if (cached.length === 0) {
+        return fetched;
+      }
+      return mergeMessagesById(fetched, cached);
+    },
     enabled: !!chatId,
     staleTime: MESSAGES_STALE_TIME_MS,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: () => undefined,
     getPreviousPageParam: (firstPage: Message[]) => {
@@ -49,6 +75,12 @@ export async function prefetchChatMessages(
   chatId: string,
   fetchPage?: () => Promise<Message[]>,
 ) {
+  const key = messagesQueryKey(chatId);
+  const state = queryClient.getQueryState(key);
+  if (state?.data || state?.fetchStatus === "fetching") {
+    return;
+  }
+
   const baseOptions = getMessagesInfiniteQueryOptions(chatId);
 
   await queryClient.prefetchInfiniteQuery({

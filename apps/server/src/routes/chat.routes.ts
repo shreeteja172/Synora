@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { prisma } from "../db";
 import { getSessionFromHeaders } from "../lib/session";
+import { unreadMessagesWhere } from "../lib/unread";
 import {
   validateBody,
   validateQuery,
   validateParams,
   schemas,
 } from "../lib/validate";
+
 const chatRoutes = Router();
 
 chatRoutes.get(
@@ -67,6 +69,7 @@ function formatChatForClient(chat: {
   updatedAt: Date;
   members: unknown;
   lastMessage?: unknown;
+  unreadCount?: number;
 }) {
   return {
     id: chat.id,
@@ -75,7 +78,18 @@ function formatChatForClient(chat: {
     members: chat.members,
     lastMessage: chat.lastMessage ?? null,
     updatedAt: chat.updatedAt,
+    unreadCount: chat.unreadCount ?? 0,
   };
+}
+
+async function getUnreadCountForUser(
+  chatId: string,
+  userId: string,
+  lastReadAt: Date | null,
+): Promise<number> {
+  return prisma.message.count({
+    where: unreadMessagesWhere(chatId, userId, lastReadAt),
+  });
 }
 
 chatRoutes.post(
@@ -133,11 +147,24 @@ chatRoutes.post(
       });
 
       if (existingChat) {
+        const membership = existingChat.members.find(
+          (member) => member.userId === session.user.id,
+        );
+        const unreadCount = await getUnreadCountForUser(
+          existingChat.id,
+          session.user.id,
+          membership?.lastReadAt ?? null,
+        );
         return res.json(
-          formatChatForClient({ ...existingChat, lastMessage: null }),
+          formatChatForClient({
+            ...existingChat,
+            lastMessage: null,
+            unreadCount,
+          }),
         );
       }
 
+      const readAt = new Date();
       const chat = await prisma.chat.create({
         data: {
           isGroup: false,
@@ -145,9 +172,11 @@ chatRoutes.post(
             create: [
               {
                 userId: session.user.id,
+                lastReadAt: readAt,
               },
               {
                 userId: receiverId,
+                lastReadAt: readAt,
               },
             ],
           },
@@ -156,7 +185,11 @@ chatRoutes.post(
       });
 
       return res.status(201).json(
-        formatChatForClient({ ...chat, lastMessage: null }),
+        formatChatForClient({
+          ...chat,
+          lastMessage: null,
+          unreadCount: 0,
+        }),
       );
     } catch (error) {
       next(error);
@@ -213,20 +246,63 @@ chatRoutes.get("/", async (req, res, next) => {
       },
     });
 
-    const formattedChats = chats.map((chat) => ({
-      id: chat.id,
-      isGroup: chat.isGroup,
-      name: chat.name,
-      members: chat.members,
-      lastMessage: chat.messages[0] ?? null,
-      updatedAt: chat.updatedAt,
-    }));
+    const formattedChats = await Promise.all(
+      chats.map(async (chat) => {
+        const membership = chat.members.find(
+          (member) => member.userId === session.user.id,
+        );
+        const unreadCount = await getUnreadCountForUser(
+          chat.id,
+          session.user.id,
+          membership?.lastReadAt ?? null,
+        );
+
+        return formatChatForClient({
+          id: chat.id,
+          isGroup: chat.isGroup,
+          name: chat.name,
+          members: chat.members,
+          lastMessage: chat.messages[0] ?? null,
+          updatedAt: chat.updatedAt,
+          unreadCount,
+        });
+      }),
+    );
 
     return res.json(formattedChats);
   } catch (error) {
     next(error);
   }
 });
+
+chatRoutes.post(
+  "/:chatId/read",
+  validateParams(schemas.chatIdParam),
+  async (req, res, next) => {
+    try {
+      const session = await getSessionFromHeaders(req.headers);
+      if (!session) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { chatId } = req.parsedParams as { chatId: string };
+      const lastReadAt = new Date();
+
+      const updated = await prisma.chatMember.updateMany({
+        where: { chatId, userId: session.user.id },
+        data: { lastReadAt },
+      });
+
+      if (updated.count === 0) {
+        return res.status(404).json({ message: "Chat not found" });
+      }
+
+      return res.json({ chatId, unreadCount: 0, lastReadAt });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 chatRoutes.get(
   "/:chatId/messages",
@@ -243,7 +319,10 @@ chatRoutes.get(
       }
 
       const { chatId } = req.parsedParams as { chatId: string };
-      const { limit, before } = req.parsedQuery as { limit: number; before?: string };
+      const { limit, before } = req.parsedQuery as {
+        limit: number;
+        before?: string;
+      };
 
       const chat = await prisma.chat.findFirst({
         where: {

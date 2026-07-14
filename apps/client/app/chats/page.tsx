@@ -8,6 +8,7 @@ import { useSession } from "@/lib/auth-client";
 import type { Chat } from "./types";
 import { resolveActiveChat } from "./lib/active-chat";
 import { prefetchChatMessages } from "./lib/messages-query";
+import { clearUnreadForChat } from "./lib/unread-cache";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { MemoChatList } from "./components/MemoChatList";
 import { ChatWindow } from "./components/ChatWindow";
@@ -46,6 +47,14 @@ export default function ChatPage() {
     setActiveChatId(chatId);
     setMobileShowChat(true);
     void prefetchChatMessages(qc, chatId);
+
+    qc.setQueryData<Chat[]>(["chats"], (old) =>
+      old ? clearUnreadForChat(old, chatId) : old,
+    );
+
+    void api.post(`/api/chats/${chatId}/read`).catch(() => {
+      void qc.invalidateQueries({ queryKey: ["chats"] });
+    });
   };
 
   if (sessionLoading || !session) {

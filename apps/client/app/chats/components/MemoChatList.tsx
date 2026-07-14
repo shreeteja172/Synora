@@ -9,6 +9,7 @@ import { useSession, signOut } from "@/lib/auth-client";
 import type { Chat, UserSearchResult } from "../types";
 import { upsertChatInList } from "../lib/active-chat";
 import { prefetchChatMessages } from "../lib/messages-query";
+import { formatUnreadBadge } from "../lib/unread-cache";
 
 async function fetchChats(): Promise<Chat[]> {
   const { data } = await api.get<Chat[]>("/api/chats");
@@ -344,11 +345,18 @@ function ChatList({
                     <span className="text-sm text-[#f5f5f5] font-semibold truncate">
                       {chatName}
                     </span>
-                    {chat.lastMessage && (
-                      <span className="text-[11px] text-[#a0a0a0] shrink-0">
-                        {formatTime(chat.lastMessage.createdAt)}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {formatUnreadBadge(chat.unreadCount ?? 0) && (
+                        <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#26A69A] text-[10px] font-semibold text-[#121212] flex items-center justify-center">
+                          {formatUnreadBadge(chat.unreadCount ?? 0)}
+                        </span>
+                      )}
+                      {chat.lastMessage && (
+                        <span className="text-[11px] text-[#a0a0a0]">
+                          {formatTime(chat.lastMessage.createdAt)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {chat.lastMessage && (
                     <p className="text-[12px] text-[#a0a0a0] truncate mt-0.5">

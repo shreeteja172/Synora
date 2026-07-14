@@ -76,11 +76,12 @@ model Chat {
 }
 
 model ChatMember {
-  id     String @id @default(cuid())
-  chatId String
-  userId String
-  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(cuid())
+  chatId     String
+  userId     String
+  lastReadAt DateTime?
+  chat       Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([chatId, userId])
   @@map("chat_member")
@@ -95,6 +96,7 @@ model Message {
   chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
+  @@index([chatId, createdAt])
   @@map("message")
 }
 

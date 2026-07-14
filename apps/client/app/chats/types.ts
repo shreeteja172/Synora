@@ -20,6 +20,7 @@ interface Chat {
     createdAt: string;
   } | null;
   updatedAt: string;
+  unreadCount: number;
 }
 
 interface Message {

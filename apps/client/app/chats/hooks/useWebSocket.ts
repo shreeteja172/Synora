@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MessageType, type WsMessage } from "@repo/types/ws";
+import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import type { Chat, Message } from "../types";
+import { nextUnreadCountOnIncoming } from "../lib/unread-cache";
+import { appendMessageToPages } from "../lib/messages-live";
+import { messagesQueryKey } from "../lib/messages-query";
 
 interface UseWebSocketOptions {
   activeChatId: string | null;
@@ -49,13 +53,18 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
   const updateInfiniteMessagesCache = useCallback(
     (chatId: string, updater: (pages: Message[][]) => Message[][]) => {
       qc.setQueryData(
-        ["messages", chatId],
+        messagesQueryKey(chatId),
         (old: { pages?: Message[][]; pageParams?: unknown[] } | undefined) => {
-          if (!old) return old;
+          if (!old) {
+            return {
+              pages: updater([]),
+              pageParams: [undefined],
+            };
+          }
 
           return {
-            pages: updater(old?.pages ?? []),
-            pageParams: old?.pageParams ?? [],
+            pages: updater(old.pages ?? []),
+            pageParams: old.pageParams ?? [undefined],
           };
         },
       );
@@ -68,7 +77,9 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
   }, [activeChatId]);
 
   useEffect(() => {
-    if (!session) return;
+    const sessionToken = session?.session?.token;
+    const currentUserId = session?.user?.id;
+    if (!sessionToken || !currentUserId) return;
 
     const connect = () => {
       clearReconnectTimeout();
@@ -81,9 +92,6 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
         return;
       }
 
-      const sessionToken = session.session?.token;
-      if (!sessionToken) return;
-
       const wsEndpoint = new URL(wsUrl);
       wsEndpoint.searchParams.set("token", sessionToken);
       const ws = new WebSocket(wsEndpoint.toString());
@@ -95,6 +103,12 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
         reconnectAttemptsRef.current = 0;
         setConnected(true);
         setOnlineUserIds(new Set());
+        void qc.invalidateQueries({ queryKey: ["chats"] });
+        if (activeChatIdRef.current) {
+          void qc.invalidateQueries({
+            queryKey: messagesQueryKey(activeChatIdRef.current),
+          });
+        }
       };
 
       ws.onclose = () => {
@@ -124,75 +138,61 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
           switch (msg.type) {
             case MessageType.NEW_MESSAGE: {
               const p = msg.payload;
-              if (p.chatId === activeChatIdRef.current) {
-                updateInfiniteMessagesCache(p.chatId, (pages) => {
-                  const updatedPages = pages.map((page) =>
-                    page.map((message) =>
-                      message.id === p.clientMessageId
-                        ? {
-                            id: p.id,
-                            content: p.content,
-                            chatId: p.chatId,
-                            senderId: p.senderId,
-                            createdAt: p.createdAt,
-                          }
-                        : message,
-                    ),
-                  );
+              const incoming: Message = {
+                id: p.id,
+                content: p.content,
+                chatId: p.chatId,
+                senderId: p.senderId,
+                createdAt: p.createdAt,
+              };
 
-                  const alreadyPresent = updatedPages.some((page) =>
-                    page.some((message) => message.id === p.id),
-                  );
+              updateInfiniteMessagesCache(p.chatId, (pages) =>
+                appendMessageToPages(pages, incoming, p.clientMessageId),
+              );
 
-                  if (alreadyPresent) {
-                    return updatedPages;
-                  }
-
-                  if (updatedPages.length === 0) {
-                    return [
-                      [
-                        {
-                          id: p.id,
-                          content: p.content,
-                          chatId: p.chatId,
-                          senderId: p.senderId,
-                          createdAt: p.createdAt,
-                        },
-                      ],
-                    ];
-                  }
-
-                  const lastPageIndex = updatedPages.length - 1;
-                  return updatedPages.map((page, index) =>
-                    index === lastPageIndex
-                      ? [
-                          ...page,
-                          {
-                            id: p.id,
-                            content: p.content,
-                            chatId: p.chatId,
-                            senderId: p.senderId,
-                            createdAt: p.createdAt,
-                          },
-                        ]
-                      : page,
-                  );
-                });
+              if (
+                p.chatId === activeChatIdRef.current &&
+                p.senderId !== currentUserId
+              ) {
+                void api.post(`/api/chats/${p.chatId}/read`);
               }
-              qc.invalidateQueries({ queryKey: ["chats"] });
+
+              qc.setQueryData<Chat[]>(["chats"], (old) => {
+                if (!old) return old;
+                return old.map((chat) => {
+                  if (chat.id !== p.chatId) return chat;
+                  return {
+                    ...chat,
+                    unreadCount: nextUnreadCountOnIncoming({
+                      currentUnread: chat.unreadCount ?? 0,
+                      senderId: p.senderId,
+                      currentUserId,
+                      chatId: p.chatId,
+                      activeChatId: activeChatIdRef.current,
+                    }),
+                    lastMessage: {
+                      id: p.id,
+                      content: p.content,
+                      senderId: p.senderId,
+                      createdAt: p.createdAt,
+                    },
+                    updatedAt: p.createdAt,
+                  };
+                });
+              });
               break;
             }
 
             case MessageType.MESSAGE: {
-              qc.invalidateQueries({
-                queryKey: ["messages", msg.payload.chatId],
+              void qc.invalidateQueries({
+                queryKey: messagesQueryKey(msg.payload.chatId),
               });
-              qc.invalidateQueries({ queryKey: ["chats"] });
+              void qc.invalidateQueries({ queryKey: ["chats"] });
               break;
             }
 
             case MessageType.TYPING: {
-              if (msg.payload.sender.id === session?.user?.id) break;
+              if (msg.payload.sender.id === currentUserId) break;
               if (msg.payload.chatId !== activeChatIdRef.current) break;
               const senderId = msg.payload.sender.id;
               setTypingSenders((prev) => {
@@ -252,7 +252,8 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
       clearTypingThrottle();
     };
   }, [
-    session,
+    session?.session?.token,
+    session?.user?.id,
     wsUrl,
     qc,
     clearTypingThrottle,
