@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
-
-const AUTH_PAGES_ALLOWED_WITH_SESSION: string[] = [];
 
 export default function AuthLayout({
   children,
@@ -12,20 +10,23 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const { data: session, isPending } = useSession();
-
-  const allowWithSession = AUTH_PAGES_ALLOWED_WITH_SESSION.some((path) =>
-    pathname.startsWith(path),
-  );
+  const [hasResolvedSession, setHasResolvedSession] = useState(false);
 
   useEffect(() => {
-    if (!isPending && session && !allowWithSession) {
+    if (!isPending) {
+      setHasResolvedSession(true);
+    }
+  }, [isPending]);
+
+  useEffect(() => {
+    if (!isPending && session) {
       router.replace("/chats");
     }
-  }, [session, isPending, router, allowWithSession]);
+  }, [session, isPending, router]);
 
-  if (isPending) {
+  // Only block first paint — do not remount children on tab-focus session refetch
+  if (!hasResolvedSession && isPending) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex items-center gap-3 text-dim text-sm">
@@ -36,7 +37,7 @@ export default function AuthLayout({
     );
   }
 
-  if (session && !allowWithSession) {
+  if (session) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex items-center gap-3 text-dim text-sm">

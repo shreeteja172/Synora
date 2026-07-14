@@ -29,6 +29,7 @@ function VerifyContent() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(60);
 
   const isReset = mode === "reset";
 
@@ -38,19 +39,35 @@ function VerifyContent() {
     }
   }, [email]);
 
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setTimeout(() => setCooldownSeconds((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldownSeconds]);
+
   const handleResend = async () => {
     if (!email) {
       toast.error("Email is missing. Please start over.");
       return;
     }
 
+    if (cooldownSeconds > 0 || resending) return;
+
     setResending(true);
     try {
-      if (mode === "reset") {
-        await api.post("/api/otp/request-password-reset", { email });
-      } else {
-        await api.post("/api/otp/request", { email });
+      const endpoint =
+        mode === "reset"
+          ? "/api/otp/request-password-reset"
+          : "/api/otp/request";
+      const { data } = await api.post(endpoint, { email });
+
+      if (data?.alreadySent) {
+        setCooldownSeconds(data.retryAfterSeconds ?? 60);
+        toast.message("A code was already sent. Please wait before requesting another.");
+        return;
       }
+
+      setCooldownSeconds(60);
       toast.success("Verification code resent.");
     } catch (err) {
       const message = axios.isAxiosError(err)
@@ -260,16 +277,20 @@ function VerifyContent() {
                   ? "Reset password"
                   : "Verify and continue"}
             </button>
-
-            <button
-              type="button"
-              onClick={handleResend}
-              disabled={resending}
-              className="w-full py-2 text-[13px] text-dim hover:text-white transition-colors disabled:opacity-50"
-            >
-              {resending ? "Sending..." : "Resend code"}
-            </button>
           </form>
+
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={resending || cooldownSeconds > 0}
+            className="w-full mt-2 py-2 text-[13px] text-dim hover:text-white transition-colors disabled:opacity-50 disabled:hover:text-dim"
+          >
+            {resending
+              ? "Sending..."
+              : cooldownSeconds > 0
+                ? `Resend code in ${cooldownSeconds}s`
+                : "Resend code"}
+          </button>
         </div>
 
         <p className="text-center text-[13px] text-dim mt-6">

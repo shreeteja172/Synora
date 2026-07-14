@@ -7,6 +7,10 @@ type OtpEmailType =
   | "forget-password"
   | "change-email";
 
+const BREVO_SEND_COOLDOWN_MS = 60 * 1000;
+const recentBrevoSends = new Map<string, number>();
+const inFlightBrevoSends = new Set<string>();
+
 const getSubject = (type: OtpEmailType) => {
   switch (type) {
     case "sign-in":
@@ -130,23 +134,55 @@ export const sendOTPEmail = async (
   otp: string,
   type: OtpEmailType = "sign-in",
 ) => {
-  await axios.post(
-    "https://api.brevo.com/v3/smtp/email",
-    {
-      sender: {
-        email: process.env.BREVO_SENDER_EMAIL,
-        name: "Synora",
+  const normalizedEmail = email.toLowerCase().trim();
+  const dedupeKey = `${type}:${normalizedEmail}`;
+  const now = Date.now();
+  const lastSentAt = recentBrevoSends.get(dedupeKey);
+
+  // Hard stop duplicate Brevo deliveries (tab remounts, double-submit, etc.)
+  if (lastSentAt && now - lastSentAt < BREVO_SEND_COOLDOWN_MS) {
+    console.warn(
+      `[email] Skipped duplicate Brevo OTP to ${normalizedEmail} (${type})`,
+    );
+    return { sent: false as const, skipped: true as const };
+  }
+
+  if (inFlightBrevoSends.has(dedupeKey)) {
+    console.warn(
+      `[email] Skipped concurrent Brevo OTP to ${normalizedEmail} (${type})`,
+    );
+    return { sent: false as const, skipped: true as const };
+  }
+
+  inFlightBrevoSends.add(dedupeKey);
+  recentBrevoSends.set(dedupeKey, now);
+
+  try {
+    await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: {
+          email: process.env.BREVO_SENDER_EMAIL,
+          name: "Synora",
+        },
+        to: [{ email: normalizedEmail }],
+        subject: getSubject(type),
+        htmlContent: buildOtpEmailHtml(otp, type),
       },
-      to: [{ email }],
-      subject: getSubject(type),
-      htmlContent: buildOtpEmailHtml(otp, type),
-    },
-    {
-      headers: {
-        "api-key": process.env.BREVO_API_KEY!,
-        "Content-Type": "application/json",
-        accept: "application/json",
+      {
+        headers: {
+          "api-key": process.env.BREVO_API_KEY!,
+          "Content-Type": "application/json",
+          accept: "application/json",
+        },
       },
-    },
-  );
+    );
+    return { sent: true as const, skipped: false as const };
+  } catch (error) {
+    // Allow a retry if the send actually failed
+    recentBrevoSends.delete(dedupeKey);
+    throw error;
+  } finally {
+    inFlightBrevoSends.delete(dedupeKey);
+  }
 };

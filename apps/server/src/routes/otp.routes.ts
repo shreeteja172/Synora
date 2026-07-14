@@ -12,6 +12,7 @@ const router = Router();
 
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
+const RESEND_COOLDOWN_MS = 60 * 1000;
 
 const otpRequestLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -97,6 +98,24 @@ router.post(
         return res.status(400).json({ message: "An account with this email already exists." });
       }
 
+      const existingOtp = await findValidOtp(normalizedEmail);
+      if (existingOtp) {
+        const ageMs = Date.now() - existingOtp.createdAt.getTime();
+        if (ageMs < RESEND_COOLDOWN_MS) {
+          return res.json({
+            message: "OTP already sent",
+            alreadySent: true,
+            retryAfterSeconds: Math.ceil((RESEND_COOLDOWN_MS - ageMs) / 1000),
+          });
+        }
+      }
+
+      // Invalidate previous unused OTPs before issuing a new one
+      await prisma.oTP.updateMany({
+        where: { email: normalizedEmail, used: false },
+        data: { used: true },
+      });
+
       const otp = generateOTP();
       const hashedCode = await bcrypt.hash(otp, 10);
 
@@ -134,6 +153,25 @@ router.post(
         return res.status(404).json({
           message: "No account found with this email. Please sign up first.",
         });
+      }
+
+      const recentReset = await prisma.verification.findFirst({
+        where: {
+          identifier: `forget-password-otp-${normalizedEmail}`,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (recentReset?.createdAt) {
+        const ageMs = Date.now() - recentReset.createdAt.getTime();
+        if (ageMs < RESEND_COOLDOWN_MS) {
+          return res.json({
+            message: "Reset code already sent",
+            alreadySent: true,
+            retryAfterSeconds: Math.ceil((RESEND_COOLDOWN_MS - ageMs) / 1000),
+          });
+        }
       }
 
       await auth.api.requestPasswordResetEmailOTP({

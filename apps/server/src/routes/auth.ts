@@ -47,8 +47,10 @@ export const auth = betterAuth({
     emailOTP({
       overrideDefaultEmailVerification: true,
       disableSignUp: true,
+      // Reuse existing OTP instead of minting a new one on repeat requests
+      resendStrategy: "reuse",
       async sendVerificationOTP({ email, otp, type }) {
-        void sendOTPEmail(email, otp, type);
+        await sendOTPEmail(email, otp, type);
       },
     }),
   ],
