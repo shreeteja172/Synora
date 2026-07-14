@@ -3,10 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { emailOtp, signIn, signUp } from "@/lib/auth-client";
+import { toast } from "sonner";
+import { signIn } from "@/lib/auth-client";
+import { SIGNUP_PENDING_KEY } from "@/lib/auth-constants";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-const SIGNUP_PASSWORD_KEY = "synora_signup_password";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -14,55 +16,72 @@ export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleGoogle = async () => {
-    setError("");
-    setLoading(true);
+    setGoogleLoading(true);
     try {
       await signIn.social({
         provider: "google",
         callbackURL: `${APP_URL}/chats`,
       });
     } catch {
-      setError("Failed to sign up with Google.");
-      setLoading(false);
+      toast.error("Failed to sign up with Google.");
+      setGoogleLoading(false);
     }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+    if (!name.trim()) {
+      toast.error("Please enter your name.");
       return;
     }
 
-    setLoading(true);
+    if (!email.trim()) {
+      toast.error("Please enter your email.");
+      return;
+    }
+
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+
+    setFormLoading(true);
     try {
-      const { error: signupError } = await signUp.email({
-        name,
-        email,
-        password,
+      const res = await fetch(`${API}/api/otp/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim() }),
       });
-      if (signupError)
-        throw new Error(signupError.message || "Failed to create account");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to send verification code");
 
-      const { error: otpError } = await emailOtp.sendVerificationOtp({
-        email,
-        type: "email-verification",
-      });
-      if (otpError) throw new Error(otpError.message || "Failed to send verification code");
+      sessionStorage.setItem(
+        SIGNUP_PENDING_KEY,
+        JSON.stringify({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          password,
+        }),
+      );
 
-      sessionStorage.setItem(SIGNUP_PASSWORD_KEY, password);
+      toast.success("Verification code sent to your email.");
       router.push(
-        `/auth/verify?email=${encodeURIComponent(email)}&mode=signup`,
+        `/auth/verify?email=${encodeURIComponent(email.trim())}&mode=signup`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-      setLoading(false);
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      setFormLoading(false);
     }
   };
 
@@ -101,8 +120,9 @@ export default function SignUpPage() {
 
         <div className="rounded-3xl border border-border bg-surface p-6 glow-corner">
           <button
+            type="button"
             onClick={handleGoogle}
-            disabled={loading}
+            disabled={googleLoading || formLoading}
             className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl border border-border bg-white/[0.03] text-white text-sm font-medium hover:bg-white/[0.06] transition-colors disabled:opacity-50"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -123,7 +143,7 @@ export default function SignUpPage() {
                 fill="#EA4335"
               />
             </svg>
-            {loading ? "Redirecting..." : "Continue with Google"}
+            {googleLoading ? "Redirecting..." : "Continue with Google"}
           </button>
 
           <div className="flex items-center gap-4 my-5">
@@ -190,18 +210,12 @@ export default function SignUpPage() {
               />
             </div>
 
-            {error && (
-              <p className="text-[13px] text-rose-400 bg-rose-400/10 border border-rose-400/20 rounded-xl px-3.5 py-2.5">
-                {error}
-              </p>
-            )}
-
             <button
               type="submit"
-              disabled={loading}
+              disabled={formLoading || googleLoading}
               className="w-full py-2.5 rounded-xl bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
             >
-              {loading ? "Creating account..." : "Create account"}
+              {formLoading ? "Sending code..." : "Create account"}
             </button>
           </form>
         </div>

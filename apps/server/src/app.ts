@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./routes/auth";
 import "./config/env";
+import { otpRoutes } from "./routes/otp.routes";
 import { initWebSocket } from "./websocket/index";
 import { chatRoutes } from "./routes/chat.routes";
 import { prisma } from "./db";
@@ -60,6 +61,7 @@ app.get("/health", async (_req, res) => {
 });
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
+app.use("/api/otp", otpRoutes);
 app.use("/api/chats", apiLimiter, chatRoutes);
 
 app.use((_req, res) => {

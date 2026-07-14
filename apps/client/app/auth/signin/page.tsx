@@ -2,48 +2,56 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { emailOtp, signIn } from "@/lib/auth-client";
+import { toast } from "sonner";
+import { signIn } from "@/lib/auth-client";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 export default function SignInPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [password, setPassword] = useState("");
+  const [formLoading, setFormLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleGoogle = async () => {
-    setError("");
-    setLoading(true);
+    setGoogleLoading(true);
     try {
       await signIn.social({
         provider: "google",
         callbackURL: `${APP_URL}/chats`,
       });
     } catch {
-      setError("Failed to sign in with Google.");
-      setLoading(false);
+      toast.error("Failed to sign in with Google.");
+      setGoogleLoading(false);
     }
   };
 
-  const handleRequestOtp = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const { error: otpError } = await emailOtp.sendVerificationOtp({
-        email,
-        type: "sign-in",
-      });
-      if (otpError) throw new Error(otpError.message || "Failed to send code");
 
-      router.push(
-        `/auth/verify?email=${encodeURIComponent(email)}&mode=signin`,
-      );
+    if (!email.trim()) {
+      toast.error("Please enter your email.");
+      return;
+    }
+
+    if (!password) {
+      toast.error("Please enter your password.");
+      return;
+    }
+
+    setFormLoading(true);
+    try {
+      const { error: signInError } = await signIn.email({
+        email,
+        password,
+        callbackURL: `${APP_URL}/chats`,
+      });
+      if (signInError) throw new Error(signInError.message || "Invalid email or password");
+
+      toast.success("Signed in successfully.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send code");
-      setLoading(false);
+      toast.error(err instanceof Error ? err.message : "Failed to sign in");
+      setFormLoading(false);
     }
   };
 
@@ -76,14 +84,15 @@ export default function SignInPage() {
             Welcome back
           </h1>
           <p className="text-sm text-dim">
-            Sign in with your email or Google
+            Sign in with your email and password
           </p>
         </div>
 
         <div className="rounded-3xl border border-border bg-surface p-6 glow-corner">
           <button
+            type="button"
             onClick={handleGoogle}
-            disabled={loading}
+            disabled={googleLoading || formLoading}
             className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl border border-border bg-white/[0.03] text-white text-sm font-medium hover:bg-white/[0.06] transition-colors disabled:opacity-50"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -104,7 +113,7 @@ export default function SignInPage() {
                 fill="#EA4335"
               />
             </svg>
-            {loading ? "Redirecting..." : "Continue with Google"}
+            {googleLoading ? "Redirecting..." : "Continue with Google"}
           </button>
 
           <div className="flex items-center gap-4 my-5">
@@ -115,7 +124,7 @@ export default function SignInPage() {
             <div className="flex-1 h-px bg-border" />
           </div>
 
-          <form onSubmit={handleRequestOtp} className="space-y-3">
+          <form onSubmit={handleSignIn} className="space-y-3">
             <div>
               <label className="block text-[11px] text-dim uppercase tracking-wider font-medium mb-1.5">
                 Email
@@ -129,19 +138,34 @@ export default function SignInPage() {
                 className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-border text-white text-sm placeholder:text-dim/60 outline-none focus:border-emerald/40 transition-colors"
               />
             </div>
-
-            {error && (
-              <p className="text-[13px] text-rose-400 bg-rose-400/10 border border-rose-400/20 rounded-xl px-3.5 py-2.5">
-                {error}
-              </p>
-            )}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] text-dim uppercase tracking-wider font-medium">
+                  Password
+                </label>
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-[11px] text-emerald hover:text-emerald/80 transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="Your password"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-border text-white text-sm placeholder:text-dim/60 outline-none focus:border-emerald/40 transition-colors"
+              />
+            </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={formLoading || googleLoading}
               className="w-full py-2.5 rounded-xl bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
             >
-              {loading ? "Sending..." : "Continue with email"}
+              {formLoading ? "Signing in..." : "Sign in"}
             </button>
           </form>
         </div>
