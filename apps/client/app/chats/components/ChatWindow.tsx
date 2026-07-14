@@ -154,7 +154,7 @@ export function ChatWindow({
     ? chat.name || "Group Chat"
     : otherMember?.user.name || otherMember?.user.username || "Chat";
 
-  const messagesQuery = useInfiniteQuery<Message[]>(
+  const messagesQuery = useInfiniteQuery(
     getMessagesInfiniteQueryOptions(chatId),
   );
 

@@ -1,4 +1,4 @@
-import type { InfiniteData, QueryClient } from "@tanstack/react-query";
+import { infiniteQueryOptions, type InfiniteData, type QueryClient } from "@tanstack/react-query";
 import type { Message } from "../types";
 import { mergeMessagesById } from "./messages-live";
 
@@ -27,20 +27,16 @@ async function fetchMessages({
 }
 
 export function getMessagesInfiniteQueryOptions(chatId: string | null) {
-  return {
+  return infiniteQueryOptions({
     queryKey: messagesQueryKey(chatId ?? ""),
     queryFn: async ({
       pageParam,
       client,
       queryKey,
-    }: {
-      pageParam: string | undefined;
-      client: QueryClient;
-      queryKey: readonly unknown[];
     }) => {
       const fetched = await fetchMessages({
         chatId: chatId!,
-        before: pageParam,
+        before: pageParam as string | undefined,
       });
 
       // First page only: keep any live WS messages that arrived during the fetch.
@@ -67,7 +63,7 @@ export function getMessagesInfiniteQueryOptions(chatId: string | null) {
       if (firstPage.length < PAGE_SIZE) return undefined;
       return firstPage[0]?.createdAt;
     },
-  };
+  });
 }
 
 export async function prefetchChatMessages(
