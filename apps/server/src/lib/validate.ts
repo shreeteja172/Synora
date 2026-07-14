@@ -54,7 +54,7 @@ export function validateParams<T>(schema: ZodSchema<T>) {
 
 export const schemas = {
   chatCreate: z.object({
-    receiverId: z.string().cuid(),
+    receiverId: z.string(),
   }),
 
   userSearch: z.object({

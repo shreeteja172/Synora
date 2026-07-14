@@ -28,26 +28,68 @@ function MessageInput({
   };
 
   return (
-    <div className="border-t border-border bg-surface/50 px-4 py-3">
-      <div className="max-w-2xl mx-auto flex gap-2 items-end rounded-2xl bg-white/3 border border-border px-4 py-2 focus-within:border-emerald/30 transition-colors">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => {
-            setInput(e.target.value);
-            handleTyping();
-          }}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-          placeholder="Type a message..."
-          className="flex-1 text-sm text-white placeholder:text-dim/60 outline-none bg-transparent py-1"
-        />
+    <div className="px-5 py-4 border-t border-[#2a2a2a] bg-[#121212]">
+      <div className="max-w-3xl mx-auto flex gap-3 items-center">
+        <div className="flex-1 flex items-center gap-2 rounded-2xl bg-[#2c2c2e] px-3.5 py-2.5 focus-within:ring-1 focus-within:ring-[#26A69A]/40 transition-shadow">
+          <button
+            type="button"
+            className="text-[#a0a0a0] hover:text-[#f5f5f5] transition-colors shrink-0"
+            aria-label="Emoji"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.8}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75h.008v.008H9.75V9.75zm4.5 0h.008v.008H14.25V9.75z"
+              />
+            </svg>
+          </button>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              handleTyping();
+            }}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+            placeholder="Write your message..."
+            className="flex-1 text-sm text-[#f5f5f5] placeholder:text-[#a0a0a0] outline-none bg-transparent py-1"
+          />
+          <button
+            type="button"
+            className="text-[#a0a0a0] hover:text-[#f5f5f5] transition-colors shrink-0"
+            aria-label="Attach file"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.8}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
+              />
+            </svg>
+          </button>
+        </div>
         <button
+          type="button"
           onClick={handleSend}
           disabled={!connected || !input.trim()}
-          className="shrink-0 w-8 h-8 rounded-xl bg-emerald/10 text-emerald flex items-center justify-center hover:bg-emerald/20 disabled:opacity-30 transition-colors"
+          className="shrink-0 w-11 h-11 rounded-xl bg-[#26A69A] text-white flex items-center justify-center hover:bg-[#2bbbad] disabled:opacity-30 transition-colors"
+          aria-label="Send message"
         >
           <svg
-            className="w-4 h-4"
+            className="w-5 h-5"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"

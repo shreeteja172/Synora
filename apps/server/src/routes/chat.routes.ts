@@ -45,6 +45,39 @@ chatRoutes.get(
   },
 );
 
+const chatListMemberInclude = {
+  members: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          image: true,
+        },
+      },
+    },
+  },
+} as const;
+
+function formatChatForClient(chat: {
+  id: string;
+  isGroup: boolean;
+  name: string | null;
+  updatedAt: Date;
+  members: unknown;
+  lastMessage?: unknown;
+}) {
+  return {
+    id: chat.id,
+    isGroup: chat.isGroup,
+    name: chat.name,
+    members: chat.members,
+    lastMessage: chat.lastMessage ?? null,
+    updatedAt: chat.updatedAt,
+  };
+}
+
 chatRoutes.post(
   "/",
   validateBody(schemas.chatCreate),
@@ -96,10 +129,13 @@ chatRoutes.post(
             },
           ],
         },
+        include: chatListMemberInclude,
       });
 
       if (existingChat) {
-        return res.json(existingChat);
+        return res.json(
+          formatChatForClient({ ...existingChat, lastMessage: null }),
+        );
       }
 
       const chat = await prisma.chat.create({
@@ -116,12 +152,12 @@ chatRoutes.post(
             ],
           },
         },
-        include: {
-          members: true,
-        },
+        include: chatListMemberInclude,
       });
 
-      return res.status(201).json(chat);
+      return res.status(201).json(
+        formatChatForClient({ ...chat, lastMessage: null }),
+      );
     } catch (error) {
       next(error);
     }

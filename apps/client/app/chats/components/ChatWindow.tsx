@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -59,16 +59,18 @@ interface ChatWindowProps {
 const MessageList = memo(function MessageList({
   messages,
   userId,
+  members,
   isLoading,
 }: {
   messages: Message[];
   userId: string | undefined;
+  members: Chat["members"];
   isLoading: boolean;
 }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-4 h-4 border-2 border-emerald border-t-transparent rounded-full animate-spin" />
+        <div className="w-4 h-4 border-2 border-[#26A69A] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -77,28 +79,58 @@ const MessageList = memo(function MessageList({
     <>
       {messages.map((msg) => {
         const isOwn = msg.senderId === userId;
+        const sender = members.find((m) => m.user.id === msg.senderId)?.user;
+        const senderName = sender?.name || sender?.username || "User";
+        const senderImage = sender?.image;
+
         return (
           <div
             key={msg.id}
-            className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
+            className={`flex gap-2.5 ${isOwn ? "justify-end" : "justify-start"}`}
           >
-            <div className="max-w-[75%]">
+            {!isOwn &&
+              (senderImage ? (
+                <Image
+                  src={senderImage}
+                  alt=""
+                  width={32}
+                  height={32}
+                  className="w-8 h-8 rounded-full object-cover shrink-0 mt-5"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#26A69A]/15 text-[#26A69A] text-[10px] font-semibold flex items-center justify-center shrink-0 mt-5">
+                  {getInitials(senderName)}
+                </div>
+              ))}
+
+            <div
+              className={`max-w-[70%] ${
+                isOwn ? "items-end" : "items-start"
+              } flex flex-col`}
+            >
               <div
-                className={`text-sm px-3.5 py-2 rounded-2xl ${
+                className={`flex items-center gap-2 mb-1 px-1 ${
+                  isOwn ? "flex-row-reverse" : "flex-row"
+                }`}
+              >
+                {!isOwn && (
+                  <span className="text-xs font-medium text-[#f5f5f5]">
+                    {senderName}
+                  </span>
+                )}
+                <span className="text-[11px] text-[#a0a0a0]">
+                  {formatTime(msg.createdAt)}
+                </span>
+              </div>
+              <div
+                className={`text-sm px-4 py-2.5 leading-relaxed ${
                   isOwn
-                    ? "bg-emerald/10 text-white border border-emerald/10 rounded-br-md"
-                    : "bg-white/3 text-white border border-border rounded-bl-md"
+                    ? "bg-[#3f3d56] text-[#f5f5f5] rounded-2xl rounded-tr-md"
+                    : "bg-[#2c2c2e] text-[#f5f5f5] rounded-2xl rounded-tl-md"
                 }`}
               >
                 {msg.content}
               </div>
-              <p
-                className={`text-[10px] text-dim mt-0.5 ${
-                  isOwn ? "text-right" : "text-left"
-                }`}
-              >
-                {formatTime(msg.createdAt)}
-              </p>
             </div>
           </div>
         );
@@ -118,6 +150,9 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const { data: session } = useSession();
   const chatId = chat?.id ?? null;
+  const [activeTab, setActiveTab] = useState<"messages" | "participants">(
+    "messages",
+  );
   const messageScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const previousScrollHeightRef = useRef(0);
@@ -132,6 +167,10 @@ export function ChatWindow({
   const isOnline = otherMember
     ? onlineUserIds.has(otherMember.user.id)
     : false;
+
+  const chatTitle = chat?.isGroup
+    ? chat.name || "Group Chat"
+    : otherMember?.user.name || otherMember?.user.username || "Chat";
 
   const messagesQuery = useInfiniteQuery<Message[]>({
     queryKey: ["messages", chatId] as const,
@@ -155,10 +194,6 @@ export function ChatWindow({
   );
 
   const loadOlderMessages = async () => {
-    console.log({
-      hasPreviousPage: messagesQuery.hasPreviousPage, 
-      isFetching: messagesQuery.isFetchingPreviousPage,
-    });
     if (
       !messagesQuery.hasPreviousPage ||
       messagesQuery.isFetchingPreviousPage ||
@@ -179,6 +214,7 @@ export function ChatWindow({
     shouldStickToBottomRef.current = true;
     isInitialHydratedRef.current = false;
     isLoadingOlderRef.current = false;
+    setActiveTab("messages");
   }, [chatId]);
 
   useLayoutEffect(() => {
@@ -215,11 +251,11 @@ export function ChatWindow({
 
   if (!chat || !otherMember) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-14 h-14 rounded-2xl bg-emerald/10 border border-emerald/20 flex items-center justify-center mx-auto mb-4">
+      <div className="flex-1 flex items-center justify-center bg-[#121212]">
+        <div className="text-center px-6">
+          <div className="w-14 h-14 rounded-2xl bg-[#26A69A]/10 border border-[#26A69A]/20 flex items-center justify-center mx-auto mb-4">
             <svg
-              className="w-7 h-7 text-emerald"
+              className="w-7 h-7 text-[#26A69A]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -232,7 +268,7 @@ export function ChatWindow({
               />
             </svg>
           </div>
-          <p className="text-sm text-dim">
+          <p className="text-sm text-[#a0a0a0]">
             Select a conversation to start messaging
           </p>
         </div>
@@ -241,89 +277,157 @@ export function ChatWindow({
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background min-h-0">
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface/50">
-        <button
-          onClick={onBack}
-          className="md:hidden text-dim hover:text-white mr-1"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
+    <div className="flex-1 flex flex-col bg-[#121212] min-h-0">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[#2a2a2a]">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={onBack}
+            className="md:hidden text-[#a0a0a0] hover:text-[#f5f5f5]"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-        </button>
-        {otherMember.user.image ? (
-          <Image
-            src={otherMember.user.image}
-            alt=""
-            width={32}
-            height={32}
-            className="w-8 h-8 rounded-full"
-          />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-emerald/10 text-emerald text-[11px] font-semibold flex items-center justify-center">
-            {getInitials(otherMember.user.name || "U")}
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+          </button>
+          <div className="min-w-0">
+            <p className="text-base font-semibold text-[#f5f5f5] truncate">
+              {chatTitle}
+            </p>
+            <p
+              className={`text-[11px] ${
+                isOnline ? "text-[#26A69A]" : "text-[#a0a0a0]"
+              }`}
+            >
+              {isOnline ? "Online" : "Offline"}
+            </p>
           </div>
-        )}
-        <div>
-          <p className="text-sm font-medium text-white">
-            {otherMember.user.name || otherMember.user.username}
-          </p>
-          <p className={`text-[10px] ${isOnline ? "text-emerald" : "text-dim"}`}>
-            {isOnline ? "Online" : "Offline"}
-          </p>
+        </div>
+
+        <div className="flex items-center rounded-full bg-[#2c2c2e] p-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab("messages")}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              activeTab === "messages"
+                ? "bg-[#26A69A] text-white"
+                : "text-[#a0a0a0] hover:text-[#f5f5f5]"
+            }`}
+          >
+            Messages
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("participants")}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              activeTab === "participants"
+                ? "bg-[#26A69A] text-white"
+                : "text-[#a0a0a0] hover:text-[#f5f5f5]"
+            }`}
+          >
+            Participants
+          </button>
         </div>
       </div>
 
-      <div
-        ref={messageScrollRef}
-        onScroll={(e) => {
-          const target = e.currentTarget;
-          const nearBottom =
-            target.scrollTop + target.clientHeight >= target.scrollHeight - 120;
-          shouldStickToBottomRef.current = nearBottom;
+      {activeTab === "participants" ? (
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <ul className="space-y-2 max-w-xl">
+            {chat.members.map((member) => {
+              const memberOnline = onlineUserIds.has(member.user.id);
+              return (
+                <li
+                  key={member.user.id}
+                  className="flex items-center gap-3 rounded-2xl bg-[#1e1e1e] px-4 py-3"
+                >
+                  {member.user.image ? (
+                    <Image
+                      src={member.user.image}
+                      alt=""
+                      width={40}
+                      height={40}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-[#26A69A]/15 text-[#26A69A] text-xs font-semibold flex items-center justify-center">
+                      {getInitials(
+                        member.user.name || member.user.username || "U",
+                      )}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[#f5f5f5] truncate">
+                      {member.user.name || member.user.username}
+                      {member.user.id === session?.user?.id ? " (You)" : ""}
+                    </p>
+                    <p
+                      className={`text-[11px] ${
+                        memberOnline ? "text-[#26A69A]" : "text-[#a0a0a0]"
+                      }`}
+                    >
+                      {memberOnline ? "Online" : "Offline"}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : (
+        <>
+          <div
+            ref={messageScrollRef}
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              const nearBottom =
+                target.scrollTop + target.clientHeight >=
+                target.scrollHeight - 120;
+              shouldStickToBottomRef.current = nearBottom;
 
-          if (target.scrollTop <= 40) {
-            void loadOlderMessages();
-          }
-        }}
-        className="flex-1 overflow-y-auto px-4 py-4"
-        style={{ overflowAnchor: "none" }}
-      >
-        <div className="max-w-2xl mx-auto space-y-1">
-          <MessageList
-            messages={messages}
-            userId={session?.user?.id}
-            isLoading={messagesQuery.isLoading}
-          />
-          {typingText && (
-            <div className="flex items-center gap-1.5 px-1 py-1">
-              <div className="flex gap-0.5">
-                <span className="w-1 h-1 rounded-full bg-dim typing-dot-1" />
-                <span className="w-1 h-1 rounded-full bg-dim typing-dot-2" />
-                <span className="w-1 h-1 rounded-full bg-dim typing-dot-3" />
-              </div>
-              <span className="text-[10px] text-dim">{typingText}</span>
+              if (target.scrollTop <= 40) {
+                void loadOlderMessages();
+              }
+            }}
+            className="flex-1 overflow-y-auto px-5 py-5"
+            style={{ overflowAnchor: "none" }}
+          >
+            <div className="max-w-3xl mx-auto space-y-4">
+              <MessageList
+                messages={messages}
+                userId={session?.user?.id}
+                members={chat.members}
+                isLoading={messagesQuery.isLoading}
+              />
+              {typingText && (
+                <div className="flex items-center gap-1.5 px-1 py-1">
+                  <div className="flex gap-0.5">
+                    <span className="w-1 h-1 rounded-full bg-[#a0a0a0] typing-dot-1" />
+                    <span className="w-1 h-1 rounded-full bg-[#a0a0a0] typing-dot-2" />
+                    <span className="w-1 h-1 rounded-full bg-[#a0a0a0] typing-dot-3" />
+                  </div>
+                  <span className="text-[11px] text-[#a0a0a0]">{typingText}</span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      <MemoMessageInput
-        chatId={chat.id}
-        connected={connected}
-        onSendMessage={onSendMessage}
-        onSendTyping={onSendTyping}
-      />
+          <MemoMessageInput
+            chatId={chat.id}
+            connected={connected}
+            onSendMessage={onSendMessage}
+            onSendTyping={onSendTyping}
+          />
+        </>
+      )}
     </div>
   );
 }
