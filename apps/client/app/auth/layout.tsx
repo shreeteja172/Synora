@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
 
-const AUTH_PAGES_ALLOWED_WITH_SESSION = ["/auth/verify"];
+const AUTH_PAGES_ALLOWED_WITH_SESSION: string[] = [];
 
 export default function AuthLayout({
   children,

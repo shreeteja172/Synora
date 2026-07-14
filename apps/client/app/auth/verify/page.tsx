@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import axios from "axios";
 import { toast } from "sonner";
 import { emailOtp, signIn } from "@/lib/auth-client";
@@ -20,7 +20,6 @@ type PendingSignup = {
 };
 
 function VerifyContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? "";
   const mode = (searchParams.get("mode") as VerifyMode) ?? "signup";
@@ -105,7 +104,7 @@ function VerifyContent() {
         if (signInError) throw new Error(signInError.message || "Failed to sign in");
 
         toast.success("Password reset successfully.");
-        router.push("/chats");
+        window.location.assign("/chats");
         return;
       }
 
@@ -128,8 +127,8 @@ function VerifyContent() {
 
       sessionStorage.removeItem(SIGNUP_PENDING_KEY);
       toast.success("Account created successfully.");
-      router.push("/chats");
-      router.refresh();
+      window.location.assign("/chats");
+      return;
     } catch (err) {
       const message = axios.isAxiosError(err)
         ? err.response?.data?.message

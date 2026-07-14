@@ -49,6 +49,7 @@ export default function SignInPage() {
       if (signInError) throw new Error(signInError.message || "Invalid email or password");
 
       toast.success("Signed in successfully.");
+      window.location.assign("/chats");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to sign in");
       setFormLoading(false);
