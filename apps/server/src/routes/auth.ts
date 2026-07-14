@@ -46,6 +46,7 @@ export const auth = betterAuth({
   plugins: [
     emailOTP({
       overrideDefaultEmailVerification: true,
+      disableSignUp: true,
       async sendVerificationOTP({ email, otp, type }) {
         void sendOTPEmail(email, otp, type);
       },

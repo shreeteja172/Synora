@@ -3,13 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { toast } from "sonner";
-import { emailOtp } from "@/lib/auth-client";
+import { api } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [notRegistered, setNotRegistered] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,16 +22,29 @@ export default function ForgotPasswordPage() {
     }
 
     setLoading(true);
+    setNotRegistered(false);
     try {
-      const { error: resetError } = await emailOtp.requestPasswordReset({ email });
-      if (resetError) throw new Error(resetError.message || "Failed to send reset code");
+      await api.post("/api/otp/request-password-reset", {
+        email: email.trim(),
+      });
 
       toast.success("Reset code sent to your email.");
       router.push(
-        `/auth/verify?email=${encodeURIComponent(email)}&mode=reset`,
+        `/auth/verify?email=${encodeURIComponent(email.trim())}&mode=reset`,
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to send reset code");
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        setNotRegistered(true);
+        toast.error(
+          err.response.data?.message ||
+            "No account found with this email. Please sign up first.",
+        );
+      } else {
+        const message = axios.isAxiosError(err)
+          ? err.response?.data?.message
+          : null;
+        toast.error(message || "Failed to send reset code");
+      }
       setLoading(false);
     }
   };
@@ -76,12 +91,27 @@ export default function ForgotPasswordPage() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setNotRegistered(false);
+                }}
                 required
                 placeholder="you@example.com"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-border text-white text-sm placeholder:text-dim/60 outline-none focus:border-emerald/40 transition-colors"
               />
             </div>
+
+            {notRegistered && (
+              <p className="text-[13px] text-rose-400 bg-rose-400/10 border border-rose-400/20 rounded-xl px-3.5 py-2.5">
+                No account found with this email.{" "}
+                <Link
+                  href="/auth/signup"
+                  className="text-emerald hover:text-emerald/80 transition-colors"
+                >
+                  Sign up instead
+                </Link>
+              </p>
+            )}
 
             <button
               type="submit"

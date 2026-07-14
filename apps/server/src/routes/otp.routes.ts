@@ -118,6 +118,36 @@ router.post(
 );
 
 router.post(
+  "/request-password-reset",
+  otpRequestLimiter,
+  validateBody(schemas.otpRequest),
+  async (req, res, next) => {
+    try {
+      const { email } = req.body;
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const existingUser = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+      });
+
+      if (!existingUser) {
+        return res.status(404).json({
+          message: "No account found with this email. Please sign up first.",
+        });
+      }
+
+      await auth.api.requestPasswordResetEmailOTP({
+        body: { email: normalizedEmail },
+      });
+
+      return res.json({ message: "Reset code sent" });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.post(
   "/complete-signup",
   otpVerifyLimiter,
   validateBody(schemas.otpCompleteSignup),

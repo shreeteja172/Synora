@@ -3,12 +3,13 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import axios from "axios";
 import { toast } from "sonner";
 import { emailOtp, signIn } from "@/lib/auth-client";
 import { SIGNUP_PENDING_KEY } from "@/lib/auth-constants";
+import { api } from "@/lib/api";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type VerifyMode = "signup" | "reset";
 
@@ -47,21 +48,16 @@ function VerifyContent() {
     setResending(true);
     try {
       if (mode === "reset") {
-        const { error: resendError } = await emailOtp.requestPasswordReset({ email });
-        if (resendError) throw new Error(resendError.message || "Failed to resend code");
+        await api.post("/api/otp/request-password-reset", { email });
       } else {
-        const res = await fetch(`${API}/api/otp/request`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ email }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Failed to resend code");
+        await api.post("/api/otp/request", { email });
       }
       toast.success("Verification code resent.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to resend code");
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.message
+        : null;
+      toast.error(message || "Failed to resend code");
     } finally {
       setResending(false);
     }
@@ -123,26 +119,24 @@ function VerifyContent() {
         throw new Error("Email mismatch. Please sign up again.");
       }
 
-      const res = await fetch(`${API}/api/otp/complete-signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          email: pending.email,
-          otp,
-          name: pending.name,
-          password: pending.password,
-        }),
+      await api.post("/api/otp/complete-signup", {
+        email: pending.email,
+        otp,
+        name: pending.name,
+        password: pending.password,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Invalid code");
 
       sessionStorage.removeItem(SIGNUP_PENDING_KEY);
       toast.success("Account created successfully.");
       router.push("/chats");
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Verification failed");
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.message
+        : err instanceof Error
+          ? err.message
+          : null;
+      toast.error(message || "Verification failed");
       setLoading(false);
     }
   };
