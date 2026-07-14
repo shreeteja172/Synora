@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { useSession, signOut } from "@/lib/auth-client";
 import type { Chat, UserSearchResult } from "../types";
 import { upsertChatInList } from "../lib/active-chat";
+import { prefetchChatMessages } from "../lib/messages-query";
 
 async function fetchChats(): Promise<Chat[]> {
   const { data } = await api.get<Chat[]>("/api/chats");
@@ -319,6 +320,8 @@ function ChatList({
                 key={chat.id}
                 type="button"
                 onClick={() => onSelectChat(chat.id)}
+                onPointerDown={() => prefetchChatMessages(qc, chat.id)}
+                onMouseEnter={() => prefetchChatMessages(qc, chat.id)}
                 className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl transition-colors ${
                   isActive ? "bg-[#2c2c2e]" : "hover:bg-[#262626]"
                 }`}

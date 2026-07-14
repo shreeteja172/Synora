@@ -3,28 +3,10 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import type { Chat, Message } from "../types";
+import { getMessagesInfiniteQueryOptions } from "../lib/messages-query";
 import { MemoMessageInput } from "./MessageInput";
-
-const PAGE_SIZE = 30;
-
-async function fetchMessages({
-  chatId,
-  before,
-}: {
-  chatId: string;
-  before?: string;
-}): Promise<Message[]> {
-  const { data } = await api.get<Message[]>(`/api/chats/${chatId}/messages`, {
-    params: {
-      limit: PAGE_SIZE,
-      ...(before ? { before } : {}),
-    },
-  });
-  return data.reverse();
-}
 
 function formatTime(iso: string) {
   try {
@@ -172,21 +154,9 @@ export function ChatWindow({
     ? chat.name || "Group Chat"
     : otherMember?.user.name || otherMember?.user.username || "Chat";
 
-  const messagesQuery = useInfiniteQuery<Message[]>({
-    queryKey: ["messages", chatId] as const,
-    queryFn: ({ pageParam }) =>
-      fetchMessages({
-        chatId: chatId!,
-        before: pageParam as string | undefined,
-      }),
-    enabled: !!chatId,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: () => undefined,
-    getPreviousPageParam: (firstPage) => {
-      if (firstPage.length < PAGE_SIZE) return undefined;
-      return firstPage[0]?.createdAt;
-    },
-  });
+  const messagesQuery = useInfiniteQuery<Message[]>(
+    getMessagesInfiniteQueryOptions(chatId),
+  );
 
   const messages = useMemo(
     () => messagesQuery.data?.pages.flat() ?? [],

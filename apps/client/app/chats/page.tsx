@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import type { Chat } from "./types";
 import { resolveActiveChat } from "./lib/active-chat";
+import { prefetchChatMessages } from "./lib/messages-query";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { MemoChatList } from "./components/MemoChatList";
 import { ChatWindow } from "./components/ChatWindow";
@@ -18,6 +19,7 @@ async function fetchChats(): Promise<Chat[]> {
 
 export default function ChatPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { data: session, isPending: sessionLoading } = useSession();
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export default function ChatPage() {
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
     setMobileShowChat(true);
+    void prefetchChatMessages(qc, chatId);
   };
 
   if (sessionLoading || !session) {
