@@ -1,6 +1,6 @@
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import type { Message } from "../types";
-import { mergeMessagesById } from "./messages-live.ts";
+import { mergeMessagesById } from "./messages-live";
 
 export const PAGE_SIZE = 30;
 export const MESSAGES_STALE_TIME_MS = 60_000;

@@ -104,11 +104,6 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
         setConnected(true);
         setOnlineUserIds(new Set());
         void qc.invalidateQueries({ queryKey: ["chats"] });
-        if (activeChatIdRef.current) {
-          void qc.invalidateQueries({
-            queryKey: messagesQueryKey(activeChatIdRef.current),
-          });
-        }
       };
 
       ws.onclose = () => {
@@ -145,6 +140,9 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
                 senderId: p.senderId,
                 createdAt: p.createdAt,
               };
+
+              // Cancel in-flight HTTP fetches so they can't wipe the live append.
+              void qc.cancelQueries({ queryKey: messagesQueryKey(p.chatId) });
 
               updateInfiniteMessagesCache(p.chatId, (pages) =>
                 appendMessageToPages(pages, incoming, p.clientMessageId),
@@ -278,6 +276,8 @@ export function useWebSocket({ activeChatId }: UseWebSocketOptions) {
         senderId: session?.user?.id || "",
         createdAt: new Date().toISOString(),
       };
+
+      void qc.cancelQueries({ queryKey: messagesQueryKey(chatId) });
 
       updateInfiniteMessagesCache(chatId, (pages) => {
         if (pages.length === 0) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useSession } from "@/lib/auth-client";
@@ -38,7 +38,7 @@ interface ChatWindowProps {
   onBack: () => void;
 }
 
-const MessageList = memo(function MessageList({
+const MessageList = function MessageList({
   messages,
   userId,
   members,
@@ -49,7 +49,7 @@ const MessageList = memo(function MessageList({
   members: Chat["members"];
   isLoading: boolean;
 }) {
-  if (isLoading) {
+  if (isLoading && messages.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="w-4 h-4 border-2 border-[#26A69A] border-t-transparent rounded-full animate-spin" />
@@ -119,7 +119,7 @@ const MessageList = memo(function MessageList({
       })}
     </>
   );
-});
+};
 
 export function ChatWindow({
   chat,
@@ -375,7 +375,7 @@ export function ChatWindow({
                 messages={messages}
                 userId={session?.user?.id}
                 members={chat.members}
-                isLoading={messagesQuery.isLoading}
+                isLoading={messagesQuery.isLoading && messages.length === 0}
               />
               {typingText && (
                 <div className="flex items-center gap-1.5 px-1 py-1">
