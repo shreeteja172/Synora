@@ -8,6 +8,8 @@ import { otpRoutes } from "./routes/otp.routes";
 import { initWebSocket } from "./websocket/index";
 import { chatRoutes } from "./routes/chat.routes";
 import { prisma } from "./db";
+import { createRouteHandler } from "uploadthing/express";
+import { uploadRouter } from "./uploadthing/router";
 
 const app = express();
 
@@ -17,8 +19,6 @@ app.use(
     credentials: true,
   }),
 );
-
-app.use(express.json({ limit: "10kb" }));
 
 app.use((req, _res, next) => {
   const cookieHeader = req.headers.cookie;
@@ -60,10 +60,18 @@ app.get("/health", async (_req, res) => {
   }
 });
 
+app.use(
+  "/api/uploadthing",
+  createRouteHandler({
+    router: uploadRouter,
+  }),
+);
+
+app.use(express.json({ limit: "10kb" }));
+
 app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use("/api/otp", otpRoutes);
 app.use("/api/chats", apiLimiter, chatRoutes);
-
 app.use((_req, res) => {
   res.status(404).json({ message: "Not found" });
 });

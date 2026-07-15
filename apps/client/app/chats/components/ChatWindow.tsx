@@ -105,13 +105,23 @@ const MessageList = function MessageList({
                 </span>
               </div>
               <div
-                className={`text-sm px-4 py-2.5 leading-relaxed ${
+                className={`text-sm leading-relaxed ${
                   isOwn
                     ? "bg-[#3f3d56] text-[#f5f5f5] rounded-2xl rounded-tr-md"
                     : "bg-[#2c2c2e] text-[#f5f5f5] rounded-2xl rounded-tl-md"
-                }`}
+                } ${msg.content.startsWith("[IMAGE]") ? "p-1.5" : "px-4 py-2.5"}`}
               >
-                {msg.content}
+                {msg.content.startsWith("[IMAGE]") ? (
+                  <Image
+                    src={msg.content.replace("[IMAGE]", "")}
+                    alt="attachment"
+                    width={300}
+                    height={300}
+                    className="rounded-lg object-cover"
+                  />
+                ) : (
+                  msg.content
+                )}
               </div>
             </div>
           </div>
@@ -146,9 +156,7 @@ export function ChatWindow({
     (m) => m.user.id !== session?.user?.id,
   );
 
-  const isOnline = otherMember
-    ? onlineUserIds.has(otherMember.user.id)
-    : false;
+  const isOnline = otherMember ? onlineUserIds.has(otherMember.user.id) : false;
 
   const chatTitle = chat?.isGroup
     ? chat.name || "Group Chat"
@@ -384,7 +392,9 @@ export function ChatWindow({
                     <span className="w-1 h-1 rounded-full bg-[#a0a0a0] typing-dot-2" />
                     <span className="w-1 h-1 rounded-full bg-[#a0a0a0] typing-dot-3" />
                   </div>
-                  <span className="text-[11px] text-[#a0a0a0]">{typingText}</span>
+                  <span className="text-[11px] text-[#a0a0a0]">
+                    {typingText}
+                  </span>
                 </div>
               )}
             </div>

@@ -1,6 +1,20 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useState, useRef } from "react";
+import { generateReactHelpers } from "@uploadthing/react";
+
+const { useUploadThing } = generateReactHelpers({
+  url: `${process.env.NEXT_PUBLIC_API_URL}/api/uploadthing`,
+  fetch: (input, init) => {
+    if (input.toString().includes("localhost:4000")) {
+      return fetch(input, {
+        ...init,
+        credentials: "include",
+      });
+    }
+    return fetch(input, init);
+  },
+});
 
 interface MessageInputProps {
   chatId: string;
@@ -16,6 +30,19 @@ function MessageInput({
   onSendTyping,
 }: MessageInputProps) {
   const [input, setInput] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { startUpload, isUploading } = useUploadThing("chatAttachment", {
+    onClientUploadComplete: (res) => {
+      if (res && res.length > 0) {
+        onSendMessage(chatId, `[IMAGE]${res[0].url}`);
+      }
+    },
+    onUploadError: (e) => {
+      console.error(e);
+      alert("Upload failed");
+    },
+  });
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -25,6 +52,15 @@ function MessageInput({
 
   const handleTyping = () => {
     onSendTyping(chatId);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await startUpload([file]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   return (
@@ -61,24 +97,37 @@ function MessageInput({
             placeholder="Write your message..."
             className="flex-1 text-sm text-[#f5f5f5] placeholder:text-[#a0a0a0] outline-none bg-transparent py-1"
           />
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+          />
           <button
             type="button"
-            className="text-[#a0a0a0] hover:text-[#f5f5f5] transition-colors shrink-0"
+            className="text-[#a0a0a0] hover:text-[#f5f5f5] transition-colors shrink-0 disabled:opacity-50"
             aria-label="Attach file"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading || !connected}
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.8}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
-              />
-            </svg>
+            {isUploading ? (
+              <div className="w-5 h-5 border-2 border-[#a0a0a0] border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.8}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
+                />
+              </svg>
+            )}
           </button>
         </div>
         <button

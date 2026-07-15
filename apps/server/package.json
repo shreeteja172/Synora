@@ -20,6 +20,7 @@
     "@types/cors": "^2.8.19",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/pg": "^8.20.0",
+    "@uploadthing/react": "^7.3.3",
     "axios": "^1.18.0",
     "bcryptjs": "^3.0.3",
     "better-auth": "^1.6.19",
@@ -32,6 +33,7 @@
     "nodemailer": "^9.0.1",
     "pg": "^8.21.0",
     "prisma": "^7.8.0",
+    "uploadthing": "^7.7.4",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
   },

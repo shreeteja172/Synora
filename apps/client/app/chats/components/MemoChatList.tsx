@@ -1,15 +1,29 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useState, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useSession, signOut } from "@/lib/auth-client";
+import { generateReactHelpers } from "@uploadthing/react";
 import type { Chat, UserSearchResult } from "../types";
 import { upsertChatInList } from "../lib/active-chat";
 import { prefetchChatMessages } from "../lib/messages-query";
 import { formatUnreadBadge } from "../lib/unread-cache";
+
+const { useUploadThing } = generateReactHelpers({
+  url: "http://localhost:4000/api/uploadthing",
+  fetch: (input, init) => {
+    if (input.toString().includes("localhost:4000")) {
+      return fetch(input, {
+        ...init,
+        credentials: "include",
+      });
+    }
+    return fetch(input, init);
+  },
+});
 
 async function fetchChats(): Promise<Chat[]> {
   const { data } = await api.get<Chat[]>("/api/chats");
@@ -67,6 +81,29 @@ function ChatList({
   const [showNewChat, setShowNewChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [listFilter, setListFilter] = useState("");
+  const [optimisticImage, setOptimisticImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { startUpload, isUploading } = useUploadThing("profileImage", {
+    onClientUploadComplete: (res) => {
+      if (res && res.length > 0) {
+        setOptimisticImage(res[0].url);
+      }
+    },
+    onUploadError: (e) => {
+      console.error(e);
+      alert("Upload failed");
+    },
+  });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await startUpload([file]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const chatsQuery = useQuery({
     queryKey: ["chats"],
@@ -99,6 +136,7 @@ function ChatList({
   const users = usersQuery.data ?? [];
   const chats = chatsQuery.data ?? [];
   const displayName = session?.user?.name || session?.user?.email || "You";
+  const currentUserImage = optimisticImage || session?.user?.image;
   const filteredChats = chats.filter((chat) => {
     if (!listFilter.trim()) return true;
     const other = chat.members.find((m) => m.user.id !== session?.user?.id);
@@ -132,19 +170,59 @@ function ChatList({
       </div>
 
       <div className="px-5 pt-4 pb-6 flex flex-col items-center text-center">
-        {session?.user?.image ? (
-          <Image
-            src={session.user.image}
-            alt=""
-            width={88}
-            height={88}
-            className="w-[88px] h-[88px] rounded-full object-cover ring-2 ring-[#26A69A]/40"
-          />
-        ) : (
-          <div className="w-[88px] h-[88px] rounded-full bg-[#26A69A]/15 text-[#26A69A] text-2xl font-semibold flex items-center justify-center ring-2 ring-[#26A69A]/40">
-            {getInitials(displayName)}
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+          className="relative rounded-full ring-2 ring-[#26A69A]/40 transition-all hover:ring-[#26A69A] group focus:outline-none focus:ring-[#26A69A]"
+          aria-label="Upload profile picture"
+        >
+          {isUploading && (
+            <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center z-10">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            <svg
+              className="w-6 h-6 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
           </div>
-        )}
+          {currentUserImage ? (
+            <Image
+              src={currentUserImage}
+              alt=""
+              width={88}
+              height={88}
+              className="w-[88px] h-[88px] rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-[88px] h-[88px] rounded-full bg-[#26A69A]/15 text-[#26A69A] text-2xl font-semibold flex items-center justify-center">
+              {getInitials(displayName)}
+            </div>
+          )}
+        </button>
         <p className="mt-3 text-base font-semibold text-[#f5f5f5]">
           {displayName}
         </p>
