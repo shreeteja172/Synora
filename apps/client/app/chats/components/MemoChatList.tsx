@@ -11,6 +11,7 @@ import type { Chat, UserSearchResult } from "../types";
 import { upsertChatInList } from "../lib/active-chat";
 import { prefetchChatMessages } from "../lib/messages-query";
 import { formatUnreadBadge } from "../lib/unread-cache";
+import { useDebounce } from "@/hooks/use-debounce";
 
 const { useUploadThing } = generateReactHelpers({
   url: `${process.env.NEXT_PUBLIC_API_URL}/api/uploadthing`,
@@ -111,10 +112,12 @@ function ChatList({
     enabled: !!session,
   });
 
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   const usersQuery = useQuery({
-    queryKey: ["users", searchQuery],
-    queryFn: () => searchUsers(searchQuery),
-    enabled: searchQuery.length > 0,
+    queryKey: ["users", debouncedSearchQuery],
+    queryFn: () => searchUsers(debouncedSearchQuery),
+    enabled: debouncedSearchQuery.length > 0,
   });
 
   const createChatMut = useMutation({
@@ -245,22 +248,16 @@ function ChatList({
             />
           </svg>
           <input
-            value={showNewChat ? searchQuery : listFilter}
-            onChange={(e) => {
-              if (showNewChat) {
-                setSearchQuery(e.target.value);
-              } else {
-                setListFilter(e.target.value);
-              }
-            }}
-            placeholder="Search"
+            value={listFilter}
+            onChange={(e) => setListFilter(e.target.value)}
+            placeholder="Search your chats..."
             className="flex-1 text-sm text-[#f5f5f5] placeholder:text-[#a0a0a0] bg-transparent outline-none"
           />
         </div>
       </div>
 
       {showNewChat && (
-        <div className="px-5 pb-3 space-y-2 border-b border-[#2a2a2a]">
+        <div className="px-5 pb-3 space-y-3 border-b border-[#2a2a2a]">
           <div className="flex items-center justify-between">
             <p className="text-xs text-[#a0a0a0]">Start a new chat</p>
             <button
@@ -274,6 +271,30 @@ function ChatList({
               Cancel
             </button>
           </div>
+          
+          <div className="flex items-center gap-2 rounded-xl bg-[#2c2c2e] px-3 py-2">
+            <svg
+              className="w-3.5 h-3.5 text-[#a0a0a0] shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+              />
+            </svg>
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search all users..."
+              autoFocus
+              className="flex-1 text-xs text-[#f5f5f5] placeholder:text-[#a0a0a0] bg-transparent outline-none"
+            />
+          </div>
+
           {searchQuery.length > 0 && (
             <div className="max-h-48 overflow-y-auto space-y-0.5">
               {usersQuery.isLoading ? (
