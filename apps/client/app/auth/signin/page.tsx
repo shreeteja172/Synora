@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { signIn } from "@/lib/auth-client";
@@ -8,6 +9,7 @@ import { signIn } from "@/lib/auth-client";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 export default function SignInPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [formLoading, setFormLoading] = useState(false);
@@ -49,7 +51,7 @@ export default function SignInPage() {
       if (signInError) throw new Error(signInError.message || "Invalid email or password");
 
       toast.success("Signed in successfully.");
-      window.location.assign("/chats");
+      router.replace("/chats");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to sign in");
       setFormLoading(false);

@@ -121,7 +121,7 @@ function VerifyContent() {
         if (signInError) throw new Error(signInError.message || "Failed to sign in");
 
         toast.success("Password reset successfully.");
-        window.location.assign("/chats");
+        router.replace("/chats");
         return;
       }
 

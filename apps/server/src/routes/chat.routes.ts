@@ -246,26 +246,40 @@ chatRoutes.get("/", async (req, res, next) => {
       },
     });
 
-    const formattedChats = await Promise.all(
-      chats.map(async (chat) => {
-        const membership = chat.members.find(
-          (member) => member.userId === session.user.id,
-        );
-        const unreadCount = await getUnreadCountForUser(
-          chat.id,
-          session.user.id,
-          membership?.lastReadAt ?? null,
-        );
+    const memberships = chats.map((chat) => {
+      const membership = chat.members.find(
+        (member) => member.userId === session.user.id,
+      );
+      return { chatId: chat.id, lastReadAt: membership?.lastReadAt ?? null };
+    });
 
-        return formatChatForClient({
-          id: chat.id,
-          isGroup: chat.isGroup,
-          name: chat.name,
-          members: chat.members,
-          lastMessage: chat.messages[0] ?? null,
-          updatedAt: chat.updatedAt,
-          unreadCount,
-        });
+    const unreadMessages = await prisma.message.findMany({
+      where: {
+        senderId: { not: session.user.id },
+        OR: memberships.map(({ chatId, lastReadAt }) => ({
+          chatId,
+          ...(lastReadAt ? { createdAt: { gt: lastReadAt } } : {}),
+        })),
+      },
+      select: {
+        chatId: true,
+      },
+    });
+
+    const unreadMap = new Map<string, number>();
+    for (const msg of unreadMessages) {
+      unreadMap.set(msg.chatId, (unreadMap.get(msg.chatId) ?? 0) + 1);
+    }
+
+    const formattedChats = chats.map((chat) =>
+      formatChatForClient({
+        id: chat.id,
+        isGroup: chat.isGroup,
+        name: chat.name,
+        members: chat.members,
+        lastMessage: chat.messages[0] ?? null,
+        updatedAt: chat.updatedAt,
+        unreadCount: unreadMap.get(chat.id) ?? 0,
       }),
     );
 

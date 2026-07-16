@@ -13,7 +13,7 @@ import { prefetchChatMessages } from "../lib/messages-query";
 import { formatUnreadBadge } from "../lib/unread-cache";
 
 const { useUploadThing } = generateReactHelpers({
-  url: "http://localhost:4000/api/uploadthing",
+  url: `${process.env.NEXT_PUBLIC_API_URL}/api/uploadthing`,
   fetch: (input, init) => {
     if (input.toString().includes("localhost:4000")) {
       return fetch(input, {
@@ -150,22 +150,9 @@ function ChatList({
     <aside
       className={`${
         mobileShowChat ? "hidden md:flex" : "flex"
-      } w-full md:w-[340px] flex-col bg-[#1e1e1e] border-r border-[#2a2a2a]`}
+      } w-full md:w-85 flex-col bg-[#1e1e1e] border-r border-[#2a2a2a]`}
     >
       <div className="px-5 pt-5 pb-2 flex items-center gap-2">
-        <svg
-          className="w-4 h-4 text-[#a0a0a0]"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M15 19l-7-7 7-7"
-          />
-        </svg>
         <h2 className="text-lg font-semibold text-[#f5f5f5]">Chat</h2>
       </div>
 
@@ -215,10 +202,10 @@ function ChatList({
               alt=""
               width={88}
               height={88}
-              className="w-[88px] h-[88px] rounded-full object-cover"
+              className="w-22 h-22 rounded-full object-cover"
             />
           ) : (
-            <div className="w-[88px] h-[88px] rounded-full bg-[#26A69A]/15 text-[#26A69A] text-2xl font-semibold flex items-center justify-center">
+            <div className="w-22 h-22 rounded-full bg-[#26A69A]/15 text-[#26A69A] text-2xl font-semibold flex items-center justify-center">
               {getInitials(displayName)}
             </div>
           )}
@@ -231,20 +218,7 @@ function ChatList({
           className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#2c2c2e] px-3 py-1 text-xs text-[#f5f5f5]"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-[#26A69A]" />
-          Available
-          <svg
-            className="w-3 h-3 text-[#a0a0a0]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
+          Online
         </button>
         <button
           type="button"
