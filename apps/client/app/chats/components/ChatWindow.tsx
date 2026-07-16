@@ -162,6 +162,8 @@ export function ChatWindow({
     ? chat.name || "Group Chat"
     : otherMember?.user.name || otherMember?.user.username || "Chat";
 
+  const chatImage = chat?.isGroup ? null : otherMember?.user.image;
+
   const messagesQuery = useInfiniteQuery(
     getMessagesInfiniteQueryOptions(chatId),
   );
@@ -277,6 +279,23 @@ export function ChatWindow({
               />
             </svg>
           </button>
+          
+          <div className="shrink-0">
+            {chatImage ? (
+              <Image
+                src={chatImage}
+                alt=""
+                width={40}
+                height={40}
+                className="w-10 h-10 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-[#26A69A]/15 text-[#26A69A] text-sm font-semibold flex items-center justify-center">
+                {getInitials(chatTitle)}
+              </div>
+            )}
+          </div>
+
           <div className="min-w-0">
             <p className="text-base font-semibold text-[#f5f5f5] truncate">
               {chatTitle}

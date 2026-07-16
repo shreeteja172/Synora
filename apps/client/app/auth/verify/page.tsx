@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { emailOtp, signIn } from "@/lib/auth-client";
 import { SIGNUP_PENDING_KEY } from "@/lib/auth-constants";
 import { api } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
@@ -20,6 +21,7 @@ type PendingSignup = {
 };
 
 function VerifyContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? "";
   const mode = (searchParams.get("mode") as VerifyMode) ?? "signup";
