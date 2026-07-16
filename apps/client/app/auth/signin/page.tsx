@@ -46,12 +46,10 @@ export default function SignInPage() {
       const { error: signInError } = await signIn.email({
         email,
         password,
-        callbackURL: `${APP_URL}/chats`,
       });
       if (signInError) throw new Error(signInError.message || "Invalid email or password");
 
       toast.success("Signed in successfully.");
-      router.replace("/chats");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to sign in");
       setFormLoading(false);
